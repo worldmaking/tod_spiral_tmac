@@ -1,13 +1,19 @@
 #pragma once
 
 #include "ofMain.h"
+#include "ofxOpenVR.h"
 
 class ofApp : public ofBaseApp{
 
 	public:
 		void setup();
+		void exit();
+
 		void update();
 		void draw();
+
+		void render(vr::Hmd_Eye nEye);
+		void controllerEvent(ofxOpenVRControllerEventArgs& args);
 
 		void keyPressed(int key);
 		void keyReleased(int key);
@@ -21,4 +27,33 @@ class ofApp : public ofBaseApp{
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
 		
+		void addPoint(float x, float y, float z);
+
+		// vector to store all values
+		vector <ofVec3f> points;
+		vector <ofVec3f> sizes;
+
+		ofxOpenVR openVR;
+
+		bool bUseShader;
+		ofShader shader;
+
+		float polylineResolution;
+
+		vector<ofPolyline> leftControllerPolylines;
+		vector<ofPolyline> rightControllerPolylines;
+		bool bIsLeftTriggerPressed;
+		bool bIsRightTriggerPressed;
+		ofVec3f leftControllerPosition;
+		ofVec3f rightControllerPosition;
+		ofVec3f lastLeftControllerPosition;
+		ofVec3f lastRightControllerPosition;
+
+		bool bShowHelp;
+		std::ostringstream _strHelp;
+
+		ofVbo vbo;
+		ofShader shaderP;
+		ofEasyCam camera;
+		ofTexture texture;
 };
