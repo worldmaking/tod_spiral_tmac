@@ -2,3 +2,4 @@ ofxAssimpModelLoader
 ofxNetwork
 ofxOpenCv
 ofxOsc
+ofxOpenVR
