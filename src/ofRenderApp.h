@@ -1,23 +1,20 @@
 #pragma once
 
 #include "ofMain.h"
-#include "ofRenderApp.h"
 
-class ofApp : public ofBaseApp {
+class RenderApp : public ofBaseApp {
 
 public:
 	bool isFullscreen;
 
+	shared_ptr<ofAppBaseWindow> window0;
 	shared_ptr<ofAppBaseWindow> window1;
-	shared_ptr<ofAppBaseWindow> window2;
-
-	shared_ptr<RenderApp> app1;
-	shared_ptr<RenderApp> app2;
 
 	void setup() {
 		isFullscreen = 0;
 		ofSetFrameRate(60);
 	}
+
 	void setupWindow1() {
 		ofSetBackgroundColor(0);
 	}
@@ -29,6 +26,7 @@ public:
 			ofShowCursor();
 		}
 	}
+
 	void draw() {
 		ofSetupScreen();  // sets up default perspective matrix
 
