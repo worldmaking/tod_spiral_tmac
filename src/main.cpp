@@ -7,6 +7,7 @@ int main( ){
 	// CONTROL SCREEN:
 	ofGLFWWindowSettings settings;
     settings.setSize(1920/4, 1200/4);
+	settings.setGLVersion(3,2);
 	//settings.windowMode = OF_FULLSCREEN;
 	//settings.monitor = 0;
 	settings.setPosition(ofVec2f(100, 100));

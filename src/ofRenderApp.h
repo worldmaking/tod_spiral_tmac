@@ -10,9 +10,13 @@ public:
 	shared_ptr<ofAppBaseWindow> window0;
 	shared_ptr<ofAppBaseWindow> window1;
 
+	ofShader shader;
+
 	void setup() {
 		isFullscreen = 0;
 		ofSetFrameRate(60);
+
+		shader.load("shaders_gl3/noise.vert", "shaders_gl3/noise.frag");
 	}
 
 	void setupWindow1() {
@@ -30,6 +34,18 @@ public:
 	void draw() {
 		ofSetupScreen();  // sets up default perspective matrix
 
+		shader.begin();
+		//we want to pass in some varrying values to animate our type / color 
+		shader.setUniform1f("timeValX", ofGetElapsedTimef() * 0.1 );
+		shader.setUniform1f("timeValY", -ofGetElapsedTimef() * 0.18 );
+		
+		//we also pass in the mouse position 
+		//we have to transform the coords to what the shader is expecting which is 0,0 in the center and y axis flipped. 
+		shader.setUniform2f("mouse", mouseX - ofGetWidth()/2, ofGetHeight()/2-mouseY );
+
+		ofDrawRectangle(0, 0, 300, 300);
+
+		shader.end();
 	}
 
 	void toggleFullScreen() { fullScreen(!isFullscreen); }
