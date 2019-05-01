@@ -1,9 +1,7 @@
 #pragma once
 
 #include "ofMain.h"
-#include "ofRenderApp.h"
 #include "ofxOpenVR.h"
-
 
 class ofApp : public ofBaseApp {
 
@@ -11,11 +9,6 @@ public:
 	bool isFullscreen = false;
 	bool bShowHelp = true;
 
-	shared_ptr<ofAppBaseWindow> window1;
-	shared_ptr<ofAppBaseWindow> window2;
-
-	shared_ptr<RenderApp> app1;
-	shared_ptr<RenderApp> app2;
 
 	////
 
@@ -26,20 +19,18 @@ public:
 	ofxOpenVR openVR;
 
 	bool bUseShader;
-	ofShader shader;
 
-	float polylineResolution;
+	float polylineResolution = .004f;
 
 	vector<ofPolyline> leftControllerPolylines;
 	vector<ofPolyline> rightControllerPolylines;
-	bool bIsLeftTriggerPressed;
-	bool bIsRightTriggerPressed;
+	bool bIsLeftTriggerPressed = false;
+	bool bIsRightTriggerPressed = false;
 	ofVec3f leftControllerPosition;
 	ofVec3f rightControllerPosition;
 	ofVec3f lastLeftControllerPosition;
 	ofVec3f lastRightControllerPosition;
 
-	bool bShowHelp;
 	std::ostringstream _strHelp;
 
 	ofVbo vbo;
@@ -62,6 +53,11 @@ public:
 		ofAddListener(openVR.ofxOpenVRControllerEvent, this, &ofApp::controllerEvent);
 
 		shaderP.load("shaders/shader"); 
+
+		polylineResolution = .004f;
+		lastLeftControllerPosition.set(ofVec3f());
+		lastRightControllerPosition.set(ofVec3f());
+
 	}
 
 	void exit() {
@@ -70,10 +66,15 @@ public:
 	}
 
 	void update() {
+
+		std::stringstream strm;
+		strm << "fps: " << ofGetFrameRate();
+		ofSetWindowTitle(strm.str());
+
 		if (isFullscreen){
 			ofHideCursor();
 		} else {
-			ofShowCursor();
+		 	ofShowCursor();
 		}
 		openVR.update();
 		if (bIsLeftTriggerPressed) {
@@ -103,6 +104,7 @@ public:
 
 	void draw() {
 		ofSetupScreen();  // sets up default perspective matrix
+		ofBackground(0);
 
 		openVR.render();
 		openVR.renderDistortion();
@@ -122,28 +124,31 @@ public:
 		}
 	}
 
-	void  render(vr::Hmd_Eye nEye) {
+	void render(vr::Hmd_Eye nEye) {
 		
 		ofMatrix4x4 currentViewProjectionMatrix = openVR.getCurrentViewProjectionMatrix(nEye);
 
-		shader.begin();
-		shader.setUniformMatrix4f("matrix", currentViewProjectionMatrix, 1);
-		ofSetColor(ofColor::white);
-		for (auto pl : leftControllerPolylines) {
-			pl.draw();
-		}
+		if (0) {
+			shaderP.begin();
+			shaderP.setUniformMatrix4f("matrix", currentViewProjectionMatrix, 1);
+			ofSetColor(ofColor::white);
+			for (auto pl : leftControllerPolylines) {
+				pl.draw();
+			}
 
-		for (auto pl : rightControllerPolylines) {
-			pl.draw();
-		}
-		shader.end();
+			for (auto pl : rightControllerPolylines) {
+				pl.draw();
+			}
+			shaderP.end();
 
-		vbo.draw(GL_POINTS, 0, (int)points.size());
+			vbo.draw(GL_POINTS, 0, (int)points.size());
+		}
 	}
 
 	void controllerEvent(ofxOpenVRControllerEventArgs& args) {
-		//cout << "ofApp::controllerEvent > role: " << ofToString(args.controllerRole) << " - event type: " << ofToString(args.eventType) << " - button type: " << ofToString(args.buttonType) << " - x: " << args.analogInput_xAxis << " - y: " << args.analogInput_yAxis << endl;
-		// Left
+	//	cout << "ofApp::controllerEvent > role: " << ofToString(args.controllerRole) << " - event type: " << ofToString(args.eventType) << " - button type: " << ofToString(args.buttonType) << " - x: " << args.analogInput_xAxis << " - y: " << args.analogInput_yAxis << endl;
+		
+		//Left
 		if (args.controllerRole == ControllerRole::Left) {
 			// Trigger
 			if (args.buttonType == ButtonType::ButtonTrigger) {
@@ -280,9 +285,6 @@ public:
 			vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
 			vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
 		}
-	}
-
-
 		default:
 			break;
 		}

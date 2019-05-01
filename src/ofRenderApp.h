@@ -1,29 +1,37 @@
 #pragma once
 
 #include "ofMain.h"
+#include "ofApp.h"
 
 class RenderApp : public ofBaseApp {
 
 public:
 	bool isFullscreen;
 
-	shared_ptr<ofAppBaseWindow> window0;
-	shared_ptr<ofAppBaseWindow> window1;
+
+	shared_ptr<ofApp> app;
 
 	ofShader shader;
 
 	void setup() {
 		isFullscreen = 0;
-		ofSetFrameRate(60);
+		//ofSetFrameRate(60);
+		//ofSetFrameRate(90);  // for VR
+		ofSetVerticalSync(false); // for VR
+
+
+		ofSetBackgroundColor(0);
 
 		shader.load("shaders_gl3/noise.vert", "shaders_gl3/noise.frag");
 	}
 
-	void setupWindow1() {
-		ofSetBackgroundColor(0);
-	}
-
 	void update() {
+
+
+		std::stringstream strm;
+		strm << "fps: " << ofGetFrameRate();
+		ofSetWindowTitle(strm.str());
+
 		if (isFullscreen){
 			ofHideCursor();
 		} else {
