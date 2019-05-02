@@ -2,11 +2,11 @@
 Devices:
 
 - Input: 
-	- 2x or 3x kinects, calibrated, clipped/filtered, merged into single point cloud
+	- 2x kinects, calibrated, clipped/filtered, merged into single point cloud
 	- Vive tracking, also calibrated in consistent space (i.e. same on each run)
 
 - Output:
-	- 2x projectors (i.e. two windows, full-screened, on separate displays)
+	- 2x projectors (i.e. two windows, full-screened, on separate displays), possibly 3rd LCD
 	- 1x Vive HMD plus controllers, distinct render to the two displays
 	- Multi-channel audio (probably 4.1?)
 
@@ -28,6 +28,12 @@ App modes:
 - Single display/no VR modes?
 - Final work
 
+---------------------------------------------
 
+NOTES
+
+
+- The Kinect processing kills the GL rendering frame rate.
+- Try separating them to different processes, and sharing data via mmapfile? Does that still kill frame rate?
 
 
