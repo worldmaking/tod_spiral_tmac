@@ -42,12 +42,17 @@ public:
 	ofTexture kinectTexture[2];
 	ofShader shader;
 
+	CloudFrame Cloud;
+
+	bool pointsCreated = false;
+
 	void setup() {
 		isFullscreen = 0;
 
-		{
+		if(1){
 			// randomly add a point on a sphere
-			int   num = 50000;
+			//Number of particles set to a low number so that the point cloud can run
+			int   num = 10;
 			float radius = 1;
 			for (int i = 0; i < num; i++) {
 
@@ -120,7 +125,24 @@ public:
 				// get most recent frames:
 				const CloudFrame& cloud = kinect.cloudFrame();
 				const ColourFrame& colour = kinect.colourFrame();
-				kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
+
+				if (!pointsCreated) {
+					int   num = cDepthWidth * cDepthHeight;
+					float radius = 1;
+					for (int i = 0; i < num; i++) {
+
+						ofVec3f p;
+						p.x = cloud.xyz[i].x;
+						p.y = cloud.xyz[i].y;
+						p.z = cloud.xyz[i].z;
+
+						addPoint(p.x, p.y, p.z);
+						pointsCreated = true;
+					} //TODO:: Figure out why the above code isn't displaying the point cloud. Also, find out why this eats up so much framerate!!
+				}
+
+
+				//kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
 			}
 		}
 
