@@ -3,6 +3,8 @@
 #include "ofMain.h"
 #include "ofxOpenVR.h"
 
+#include "al/al_kinect2.h"
+
 class ofApp : public ofBaseApp {
 
 public:
@@ -10,7 +12,7 @@ public:
 	bool bShowHelp = true;
 
 
-	////
+	CloudDeviceManager cloudDeviceManager;
 
 	// vector to store all values
 	vector <ofVec3f> points;
@@ -38,6 +40,8 @@ public:
 	ofEasyCam camera;
 	ofTexture texture;
 
+	ofTexture kinectTexture[2];
+
 	void setup() {
 		isFullscreen = 0;
 
@@ -58,6 +62,12 @@ public:
 		lastLeftControllerPosition.set(ofVec3f());
 		lastRightControllerPosition.set(ofVec3f());
 
+		kinectTexture[0].allocate(cColorWidth, cColorHeight, GL_RGBA);
+		kinectTexture[1].allocate(cColorWidth, cColorHeight, GL_RGBA);
+
+		cloudDeviceManager.reset();
+		cloudDeviceManager.open_all();
+
 	}
 
 	void exit() {
@@ -70,6 +80,16 @@ public:
 		std::stringstream strm;
 		strm << "fps: " << ofGetFrameRate();
 		ofSetWindowTitle(strm.str());
+
+		for (int i=0; i<2; i++) {
+			CloudDevice& kinect = cloudDeviceManager.devices[i];
+			if (kinect.capturing) {
+				// get most recent frames:
+				const CloudFrame& cloud = kinect.cloudFrame();
+				const ColourFrame& colour = kinect.colourFrame();
+				kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
+			}
+		}
 
 		if (isFullscreen){
 			ofHideCursor();
@@ -108,6 +128,10 @@ public:
 
 		openVR.render();
 		openVR.renderDistortion();
+
+		kinectTexture[0].draw(0, 0, ofGetWidth()/2, ofGetHeight()/2);
+		kinectTexture[1].draw(0, ofGetHeight() / 2, ofGetWidth() / 2, ofGetHeight() / 2);
+
 		openVR.drawDebugInfo(10.0f, 500.0f);
 
 		// Help
