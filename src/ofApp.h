@@ -77,7 +77,6 @@ public:
 
 		shaderP.load("shaders/shader"); 
 
-		polylineResolution = .004f;
 		lastLeftControllerPosition.set(ofVec3f());
 		lastRightControllerPosition.set(ofVec3f());
 
@@ -87,6 +86,21 @@ public:
 		cloudDeviceManager.reset();
 		cloudDeviceManager.open_all();
 
+		// upload the data to the vbo
+		int total = (int)points.size();
+		vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
+		vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
+		shader.load("shaders_gl3/point");
+
+	}
+
+	void addPoint(float x, float y, float z) {
+		ofVec3f p(x, y, z);
+		points.push_back(p);
+
+		// we are passing the size in as a normal x position
+		float size = ofRandom(50, 100);
+		sizes.push_back(ofVec3f(size));
 	}
 
 	void exit() {
@@ -150,8 +164,8 @@ public:
 		openVR.render();
 		openVR.renderDistortion();
 
-		kinectTexture[0].draw(0, 0, ofGetWidth()/2, ofGetHeight()/2);
-		kinectTexture[1].draw(0, ofGetHeight() / 2, ofGetWidth() / 2, ofGetHeight() / 2);
+		kinectTexture[0].draw(ofGetWidth() / 2, 0, ofGetWidth()/2, ofGetHeight()/2);
+		kinectTexture[1].draw(ofGetWidth() / 2, ofGetHeight() / 2, ofGetWidth() / 2, ofGetHeight() / 2);
 
 		openVR.drawDebugInfo(10.0f, 500.0f);
 
