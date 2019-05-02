@@ -34,6 +34,6 @@ NOTES
 
 
 - The Kinect processing kills the GL rendering frame rate.
-- Try separating them to different processes, and sharing data via mmapfile? Does that still kill frame rate?
-
+- Could try separating them to different processes, and sharing data via mmapfile? Does that still kill frame rate?
+- but also it looks like the drop was actually in the texture.loadData to display it, in which case maybe we *can* run the kinects in OF after all
 

@@ -114,15 +114,7 @@ public:
 		strm << "fps: " << ofGetFrameRate();
 		ofSetWindowTitle(strm.str());
 
-		for (int i=0; i<2; i++) {
-			CloudDevice& kinect = cloudDeviceManager.devices[i];
-			if (kinect.capturing) {
-				// get most recent frames:
-				const CloudFrame& cloud = kinect.cloudFrame();
-				const ColourFrame& colour = kinect.colourFrame();
-				kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
-			}
-		}
+		
 
 		if (isFullscreen){
 			ofHideCursor();
@@ -153,7 +145,18 @@ public:
 				}
 			}
 		}
-
+		
+		if (0) {
+			for (int i = 0; i < 2; i++) {
+				CloudDevice& kinect = cloudDeviceManager.devices[i];
+				if (kinect.capturing) {
+					// get most recent frames:
+					const CloudFrame& cloud = kinect.cloudFrame();
+					const ColourFrame& colour = kinect.colourFrame();
+					kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
+				}
+			}
+		}
 		//printf("Left Controller: %f %f %f \n Right Controller: %f %f %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z, rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 	}
 
