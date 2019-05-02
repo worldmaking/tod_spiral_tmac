@@ -12,6 +12,13 @@ public:
 	shared_ptr<ofApp> app;
 
 	ofShader shader;
+	ofTexture texture;
+
+	ofVbo vbo;
+	ofEasyCam camera;
+	float camDist = 2;
+
+	RenderApp(shared_ptr<ofApp> app) : app(app) {}
 
 	void setup() {
 		isFullscreen = 0;
@@ -20,9 +27,26 @@ public:
 		ofSetVerticalSync(false); // for VR
 
 
-		ofSetBackgroundColor(0);
+		//ofSetBackgroundColor(0);
+		ofBackgroundHex(0x000000);
 
-		shader.load("shaders_gl3/noise.vert", "shaders_gl3/noise.frag");
+
+		// load the texure
+		ofDisableArbTex();
+		ofLoadImage(texture, "dot.png");
+
+		camera.setTarget(glm::vec3(0.f));
+		camera.setNearClip(0.01);
+		camera.setFarClip(10.f);
+		camera.setDistance(camDist);
+		
+		// upload the data to the vbo
+		int total = (int)app->points.size();
+		vbo.setVertexData(&app->points[0], total, GL_STATIC_DRAW);
+		vbo.setNormalData(&app->sizes[0], total, GL_STATIC_DRAW);
+
+		//shader.load("shaders_gl3/noise.vert", "shaders_gl3/noise.frag");
+		shader.load("shaders_gl3/point");
 	}
 
 	void update() {
@@ -39,21 +63,88 @@ public:
 		}
 	}
 
+
 	void draw() {
-		ofSetupScreen();  // sets up default perspective matrix
+		if (0) {
+			ofSetupScreen();
+			camera.begin();
+			app->draw_scene(camera.getModelViewProjectionMatrix());
+			camera.end();
+		}
 
+	if (1) {
+		ofSetupScreen();
+		//glDepthMask(GL_FALSE);
+
+		ofSetColor(255, 100, 90);
+
+		// this makes everything look glowy :)
+		ofEnableBlendMode(OF_BLENDMODE_ADD);
+		ofEnablePointSprites();
+
+		// bind the shader and camera
+		// everything inside this function
+		// will be effected by the shader/camera
+		camera.begin();
 		shader.begin();
-		//we want to pass in some varrying values to animate our type / color 
-		shader.setUniform1f("timeValX", ofGetElapsedTimef() * 0.1 );
-		shader.setUniform1f("timeValY", -ofGetElapsedTimef() * 0.18 );
-		
-		//we also pass in the mouse position 
-		//we have to transform the coords to what the shader is expecting which is 0,0 in the center and y axis flipped. 
-		shader.setUniform2f("mouse", mouseX - ofGetWidth()/2, ofGetHeight()/2-mouseY );
+		shader.setUniform1f("size", 2.f);
+		shader.setUniformMatrix4f("modelViewProjectionMatrix", camera.getModelViewProjectionMatrix());
 
-		ofDrawRectangle(0, 0, 300, 300);
+		// bind the texture so that when all the points 
+		// are drawn they are replace with our dot image
+		texture.bind();
+		vbo.draw(GL_POINTS, 0, (int)app->points.size());
+		texture.unbind();
 
+		camera.end();
 		shader.end();
+
+		ofDisablePointSprites();
+		ofDisableBlendMode();
+		//glDepthMask(GL_TRUE);
+	}
+
+	if (0) {
+		// check to see if the points are 
+	// sizing to the right size
+		ofEnableAlphaBlending();
+		camera.begin();
+		for (unsigned int i = 0; i < app->points.size(); i++) {
+			ofSetColor(255, 80);
+			ofVec3f mid = app->points[i];
+			mid.normalize();
+			mid *= 300;
+			ofDrawLine(app->points[i], mid);
+		}
+		camera.end();
+
+		glDepthMask(GL_TRUE);
+
+		ofSetColor(255, 100);
+		ofDrawRectangle(0, 0, 250, 90);
+		ofSetColor(0);
+		string info = "FPS " + ofToString(ofGetFrameRate(), 0) + "\n";
+		info += "Total Points " + ofToString((int)app->points.size()) + "\n";
+		info += "Press 'a' to add more\n";
+		info += "Press 'c' to remove all";
+
+		ofDrawBitmapString(info, 20, 20);
+	}
+
+//		ofSetupScreen();  // sets up default perspective matrix
+
+		// shader.begin();
+		// //we want to pass in some varrying values to animate our type / color 
+		// shader.setUniform1f("timeValX", ofGetElapsedTimef() * 0.1 );
+		// shader.setUniform1f("timeValY", -ofGetElapsedTimef() * 0.18 );
+		
+		// //we also pass in the mouse position 
+		// //we have to transform the coords to what the shader is expecting which is 0,0 in the center and y axis flipped. 
+		// shader.setUniform2f("mouse", mouseX - ofGetWidth()/2, ofGetHeight()/2-mouseY );
+
+		// ofDrawRectangle(0, 0, 300, 300);
+
+		// shader.end();
 	}
 
 	void toggleFullScreen() { fullScreen(!isFullscreen); }
@@ -70,9 +161,29 @@ public:
 		}
 	}
 
+
 	void keyPressed(int key) {
-		if(key == 'f'){
+		switch (key) {
+		case 'f':
 			toggleFullScreen();
+			break;
+		case 'a': {
+#if 0
+			float theta1 = ofRandom(0, TWO_PI);
+			float theta2 = ofRandom(0, TWO_PI);
+			ofVec3f p;
+			p.x = cos(theta1) * cos(theta2);
+			p.y = sin(theta1);
+			p.z = cos(theta1) * sin(theta2);
+			p *= 800;
+			addPoint(p.x, p.y, p.z);
+			int total = (int)points.size();
+			vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
+			vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
+#endif
+		}
+		default:
+			break;
 		}
 	}
 	// void keyReleased(int key);

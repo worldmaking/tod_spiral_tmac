@@ -2,6 +2,7 @@
 
 #include "ofMain.h"
 #include "ofxOpenVR.h"
+#include "of3dGraphics.h"
 
 #include "al/al_kinect2.h"
 
@@ -10,7 +11,6 @@ class ofApp : public ofBaseApp {
 public:
 	bool isFullscreen = false;
 	bool bShowHelp = true;
-
 
 	CloudDeviceManager cloudDeviceManager;
 
@@ -37,13 +37,32 @@ public:
 
 	ofVbo vbo;
 	ofShader shaderP;
-	ofEasyCam camera;
 	ofTexture texture;
 
 	ofTexture kinectTexture[2];
+	ofShader shader;
 
 	void setup() {
 		isFullscreen = 0;
+
+		{
+			// randomly add a point on a sphere
+			int   num = 50000;
+			float radius = 1;
+			for (int i = 0; i < num; i++) {
+
+				float theta1 = ofRandom(0, TWO_PI);
+				float theta2 = ofRandom(0, TWO_PI);
+
+				ofVec3f p;
+				p.x = cos(theta1) * cos(theta2);
+				p.y = sin(theta1);
+				p.z = cos(theta1) * sin(theta2);
+				p *= radius;
+
+				addPoint(p.x, p.y, p.z);
+			}
+		}
 
 		// load the texure
 		ofDisableArbTex();
@@ -120,6 +139,8 @@ public:
 				}
 			}
 		}
+
+		//printf("Left Controller: %f %f %f \n Right Controller: %f %f %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z, rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 	}
 
 	void draw() {
@@ -133,6 +154,7 @@ public:
 		kinectTexture[1].draw(0, ofGetHeight() / 2, ofGetWidth() / 2, ofGetHeight() / 2);
 
 		openVR.drawDebugInfo(10.0f, 500.0f);
+
 
 		// Help
 		if (bShowHelp) {
@@ -148,9 +170,38 @@ public:
 		}
 	}
 
+	void draw_scene(ofMatrix4x4 viewMatrix) {
+		glDepthMask(GL_FALSE);
+		// this makes everything look glowy :)
+		ofEnableBlendMode(OF_BLENDMODE_ADD);
+		ofEnablePointSprites();
+
+		shader.begin();
+		shader.setUniform1f("size", 2.f);
+		shader.setUniformMatrix4f("modelViewProjectionMatrix", viewMatrix);
+
+		glPointSize(40.f);
+
+		texture.bind();
+		vbo.draw(GL_POINTS, 0, (int)points.size());
+		texture.unbind();
+
+		shader.end();
+
+		ofDisablePointSprites();
+		ofDisableBlendMode();
+		glDepthMask(GL_TRUE);
+
+	}
+
 	void render(vr::Hmd_Eye nEye) {
 		
 		ofMatrix4x4 currentViewProjectionMatrix = openVR.getCurrentViewProjectionMatrix(nEye);
+
+		draw_scene(currentViewProjectionMatrix);
+
+		
+		
 
 		if (0) {
 			shaderP.begin();
@@ -162,10 +213,10 @@ public:
 
 			for (auto pl : rightControllerPolylines) {
 				pl.draw();
+				//addPoint(0.1, 0.2, 0.1);
 			}
+			//vbo.draw(GL_POINTS, 0, (int)points.size());
 			shaderP.end();
-
-			vbo.draw(GL_POINTS, 0, (int)points.size());
 		}
 	}
 
@@ -178,6 +229,8 @@ public:
 			if (args.buttonType == ButtonType::ButtonTrigger) {
 				if (args.eventType == EventType::ButtonPress) {
 					bIsLeftTriggerPressed = true;
+					addPoint(leftControllerPosition.x * 500.f, leftControllerPosition.y * 500.f, leftControllerPosition.z * 500.f);
+					printf("Left Controller x: %f  y: %f  z: %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
 
 					if (leftControllerPolylines.size() == 0) {
 						leftControllerPolylines.push_back(ofPolyline());
@@ -213,6 +266,8 @@ public:
 			if (args.buttonType == ButtonType::ButtonTrigger) {
 				if (args.eventType == EventType::ButtonPress) {
 					bIsRightTriggerPressed = true;
+					addPoint(rightControllerPosition.x * 800.f, rightControllerPosition.y * 800.f, rightControllerPosition.z * 800.f);
+					printf("Right Controller x: %f  y: %f  z: %f \n", rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 
 					if (rightControllerPolylines.size() == 0) {
 						rightControllerPolylines.push_back(ofPolyline());
@@ -244,14 +299,7 @@ public:
 	}
 
 	//--------------------------------------------------------------
-	void addPoint(float x, float y, float z) {
-		ofVec3f p(x, y, z);
-		points.push_back(p); 
-
-		// we are passing the size in as a normal x position
-		float size = ofRandom(50, 100);
-		sizes.push_back(ofVec3f(size));
-	}
+	
 
 	void toggleFullScreen() { fullScreen(!isFullscreen); }
 
@@ -268,10 +316,6 @@ public:
 	}
 
 	void keyPressed(int key) {
-		if(key == 'f'){
-			toggleFullScreen();
-		}
-
 		switch (key) {
 		case 'f':
 			toggleFullScreen();
@@ -296,19 +340,6 @@ public:
 		case 'm':
 			openVR.setRenderModelForTrackedDevices(!openVR.getRenderModelForTrackedDevices());
 			break;
-		case 'a': {
-			float theta1 = ofRandom(0, TWO_PI);
-			float theta2 = ofRandom(0, TWO_PI);
-			ofVec3f p;
-			p.x = cos(theta1) * cos(theta2);
-			p.y = sin(theta1);
-			p.z = cos(theta1) * sin(theta2);
-			p *= 800;
-			addPoint(p.x, p.y, p.z);
-			int total = (int)points.size();
-			vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
-			vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
-		}
 		default:
 			break;
 		}
