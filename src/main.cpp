@@ -34,11 +34,9 @@ int main( ){
 	window1->setVerticalSync(false);
 
 	shared_ptr<ofApp> app(new ofApp);
-	shared_ptr<RenderApp> app1(new RenderApp);
-	shared_ptr<RenderApp> app2(new RenderApp);
+	shared_ptr<RenderApp> app1(new RenderApp(app));
+	shared_ptr<RenderApp> app2(new RenderApp(app));
 
-	app1->app = app;
-	app1->app = app;
 
 	ofRunApp(window0, app);
 	ofRunApp(window1, app1);
