@@ -44,6 +44,7 @@ public:
 
 	CloudFrame Cloud;
 
+	bool firstFrameFlag = false;
 	bool pointsCreated = false;
 
 	void setup() {
@@ -119,27 +120,33 @@ public:
 		strm << "fps: " << ofGetFrameRate();
 		ofSetWindowTitle(strm.str());
 
-		for (int i=0; i<2; i++) {
+		for (int i=0; i<1; i++) {
 			CloudDevice& kinect = cloudDeviceManager.devices[i];
 			if (kinect.capturing) {
 				// get most recent frames:
 				const CloudFrame& cloud = kinect.cloudFrame();
 				const ColourFrame& colour = kinect.colourFrame();
 
-				if (!pointsCreated) {
+				
+
+				if (!pointsCreated && firstFrameFlag) {
 					int   num = cDepthWidth * cDepthHeight;
 					float radius = 1;
-					for (int i = 0; i < num; i++) {
+					for (int j = 0; j < num; j++) {
 
 						ofVec3f p;
-						p.x = cloud.xyz[i].x;
-						p.y = cloud.xyz[i].y;
-						p.z = cloud.xyz[i].z;
+						p.x = cloud.xyz[j].x;
+						p.y = cloud.xyz[j].y;
+						p.z = cloud.xyz[j].z;
+
+						//printf("X value of point %d:  %f \n", j, p.x);
 
 						addPoint(p.x, p.y, p.z);
 						pointsCreated = true;
 					} //TODO:: Figure out why the above code isn't displaying the point cloud. Also, find out why this eats up so much framerate!!
 				}
+
+				if (!firstFrameFlag) firstFrameFlag = true;
 
 
 				//kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
