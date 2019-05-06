@@ -44,32 +44,32 @@ public:
 
 	CloudFrame Cloud;
 
-	bool firstFrameFlag = false;
-	bool pointsCreated = false;
+	bool firstFrameFlag = false; //unused but not removed
+	bool pointsCreated = false; //unused but not removed
+
+	bool isCapturing;
+
+	ofVec3f origin = ofVec3f(0.f, 0.5f, 0.f); //sets the ground to a decent level to start
+	
 
 	void setup() {
 		isFullscreen = 0;
 
 		if(1){
-			// randomly add a point on a sphere
-			//Number of particles set to a low number so that the point cloud can run
-			int   num = 10;
-			float radius = 1;
-			for (int i = 0; i < num; i++) {
-
-				float theta1 = ofRandom(0, TWO_PI);
-				float theta2 = ofRandom(0, TWO_PI);
-
+			//Sets up a number of particles at position 0 before the kinect starts rendering
+			CloudDevice& kinect = cloudDeviceManager.devices[0];
+			const CloudFrame& cloud = kinect.cloudFrame();
+			const ColourFrame& colour = kinect.colourFrame();
+			int num = cDepthWidth * cDepthHeight;
+			for (int j = 0; j < num; j++) {
 				ofVec3f p;
-				p.x = cos(theta1) * cos(theta2);
-				p.y = sin(theta1);
-				p.z = cos(theta1) * sin(theta2);
-				p *= radius;
-
+				p.x = 0;
+				p.y = 0;
+				p.z = 0;
 				addPoint(p.x, p.y, p.z);
 			}
 		}
-
+		
 		// load the texure
 		ofDisableArbTex();
 		ofLoadImage(texture, "dot.png");
@@ -97,7 +97,6 @@ public:
 		vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
 		vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
 		shader.load("shaders_gl3/point");
-
 	}
 
 	void addPoint(float x, float y, float z) {
@@ -107,6 +106,10 @@ public:
 		// we are passing the size in as a normal x position
 		float size = ofRandom(50, 100);
 		sizes.push_back(ofVec3f(size));
+	}
+
+	void updatePoints(vector <ofVec3f> pUpdate) {
+		points = pUpdate;
 	}
 
 	void exit() {
@@ -120,36 +123,38 @@ public:
 		strm << "fps: " << ofGetFrameRate();
 		ofSetWindowTitle(strm.str());
 
-		for (int i=0; i<1; i++) {
+		
+		for (int i = 0; i < 1; i++) { //set i = 2 for two kinects
 			CloudDevice& kinect = cloudDeviceManager.devices[i];
 			if (kinect.capturing) {
+
+				isCapturing = true; 
 				// get most recent frames:
 				const CloudFrame& cloud = kinect.cloudFrame();
 				const ColourFrame& colour = kinect.colourFrame();
 
-				
+				int num = cDepthWidth * cDepthHeight;
+				float radius = 1;
 
-				if (!pointsCreated && firstFrameFlag) {
-					int   num = cDepthWidth * cDepthHeight;
-					float radius = 1;
-					for (int j = 0; j < num; j++) {
-
-						ofVec3f p;
-						p.x = cloud.xyz[j].x;
-						p.y = cloud.xyz[j].y;
-						p.z = cloud.xyz[j].z;
-
-						//printf("X value of point %d:  %f \n", j, p.x);
-
-						addPoint(p.x, p.y, p.z);
-						pointsCreated = true;
-					} //TODO:: Figure out why the above code isn't displaying the point cloud. Also, find out why this eats up so much framerate!!
+				vector <ofVec3f> pointsUpdate;
+				for (int j = 0; j < num; j++) {
+					ofVec3f p;
+					//y and z values must be negative, otherwise kinect particles will be upside-down and reversed
+					p.x = cloud.xyz[j].x + origin.x - 0.5;
+					p.y = -cloud.xyz[j].y + origin.y; //this allows the floor to be at a decent level without bending down. for using the floor as calibration, add or subtract 0.5
+					p.z = -cloud.xyz[j].z + origin.z - 0.5;
+					//if(p.x != 0.f || p.y != 0.f || p.z != 0.f)
+						pointsUpdate.push_back(p);
 				}
-
-				if (!firstFrameFlag) firstFrameFlag = true;
-
-
-				//kinectTexture[i].loadData((int8_t *)colour.color, cColorWidth, cColorHeight, GL_RGB);
+				ofVec3f ref1 = ofVec3f(0.f, 0.f, 0.f);
+				ofVec3f ref2 = ofVec3f(-0.5, -0.5, -0.5);
+				pointsUpdate.push_back(ref1); //reference point
+				pointsUpdate.push_back(ref2); //reference point
+				updatePoints(pointsUpdate);	//TODO: Reposition and re-orient the kinect space in the VR space. A L G O R I T H M S
+				//printf("Points Updated \n");
+				//printf("Point 0 of points: %f, %f, %f\n", points[0].x, points[0].y, points[0].z);
+				int total = (int)points.size();
+				vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
 			}
 		}
 
@@ -182,8 +187,27 @@ public:
 				}
 			}
 		}
-
 		//printf("Left Controller: %f %f %f \n Right Controller: %f %f %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z, rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
+	}
+
+
+	// doesn't get used at the moment
+	void drawParticles() {
+
+		int num = cDepthWidth * cDepthHeight;
+		float radius = 1;
+		for (int i = 0; i < 10; i++) {
+			float theta1 = ofRandom(0, TWO_PI);
+			float theta2 = ofRandom(0, TWO_PI);
+
+			ofVec3f p;
+			p.x = cos(theta1) * cos(theta2);
+			p.y = sin(theta1);
+			p.z = cos(theta1) * sin(theta2);
+			p *= radius;
+
+			addPoint(p.x, p.y, p.z);
+		}
 	}
 
 	void draw() {
@@ -272,8 +296,10 @@ public:
 			if (args.buttonType == ButtonType::ButtonTrigger) {
 				if (args.eventType == EventType::ButtonPress) {
 					bIsLeftTriggerPressed = true;
-					addPoint(leftControllerPosition.x * 500.f, leftControllerPosition.y * 500.f, leftControllerPosition.z * 500.f);
-					printf("Left Controller x: %f  y: %f  z: %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
+					//addPoint(leftControllerPosition.x * 500.f, leftControllerPosition.y * 500.f, leftControllerPosition.z * 500.f);
+					//printf("Left Controller x: %f  y: %f  z: %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
+
+					origin = ofVec3f(leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
 
 					if (leftControllerPolylines.size() == 0) {
 						leftControllerPolylines.push_back(ofPolyline());
@@ -309,8 +335,10 @@ public:
 			if (args.buttonType == ButtonType::ButtonTrigger) {
 				if (args.eventType == EventType::ButtonPress) {
 					bIsRightTriggerPressed = true;
-					addPoint(rightControllerPosition.x * 800.f, rightControllerPosition.y * 800.f, rightControllerPosition.z * 800.f);
-					printf("Right Controller x: %f  y: %f  z: %f \n", rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
+					//addPoint(rightControllerPosition.x * 800.f, rightControllerPosition.y * 800.f, rightControllerPosition.z * 800.f);
+					//printf("Right Controller x: %f  y: %f  z: %f \n", rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
+
+					origin = ofVec3f(rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 
 					if (rightControllerPolylines.size() == 0) {
 						rightControllerPolylines.push_back(ofPolyline());
