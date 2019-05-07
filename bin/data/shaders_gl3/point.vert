@@ -9,5 +9,5 @@ void main() {
 
     gl_Position   = modelViewProjectionMatrix * position;
     gl_PointSize  = size;
-    frontColor = vec4(1., 0.5, 1., 1.) ;
+    frontColor = vec4(0.3, 1., 1., 1.) ;
 }

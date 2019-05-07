@@ -10,7 +10,7 @@ class ofApp : public ofBaseApp {
 
 public:
 	bool isFullscreen = false;
-	bool bShowHelp = true;
+	bool bShowHelp = false;
 
 	CloudDeviceManager cloudDeviceManager;
 
@@ -49,7 +49,14 @@ public:
 
 	bool isCapturing;
 
-	ofVec3f origin = ofVec3f(0.f, 0.5f, 0.f); //sets the ground to a decent level to start
+	bool rightDown = false;
+	bool leftDown = false;
+
+	glm::mat4x4 controllerBegin;
+	glm::mat4x4 kinectBegin;
+
+	ofVec3f origin = ofVec3f(-1.f, 0.f, -1.f); //starts the kinect space closer to the kinect (The physical kniect is somewhere < -1,0,-1 in the VR space)
+	//ofVec3f cloudMan = ofVec3f(0.f, 0.f, 0.f);
 	
 
 	void setup() {
@@ -108,8 +115,9 @@ public:
 		sizes.push_back(ofVec3f(size));
 	}
 
-	void updatePoints(vector <ofVec3f> pUpdate) {
+	void updatePoints(vector <ofVec3f> pUpdate, vector <ofVec3f> sUpdate) {
 		points = pUpdate;
+		sizes = sUpdate;
 	}
 
 	void exit() {
@@ -135,26 +143,100 @@ public:
 
 				int num = cDepthWidth * cDepthHeight;
 				float radius = 1;
+				
+				/*cout << kinect.cloudTransform;
+				cout << "\n -------------------------------- \n";*/
+
+				
+
+
+				//glm::mat4 cloudTransform = glm::mat4(1.); this is what kinect2 auto sets the cloud transform to be
+				if (bIsLeftTriggerPressed) {
+
+					glm::mat4x4 controllerMatrix = glm::mat4x4(
+						-openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[0], // [x] -ve removes mirror effect
+						-openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[1], // [y] -ve flips the scene rightside up
+						openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[2], // [z]
+						openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]); // [w]
+
+					if (!leftDown) {
+						leftDown = true;
+						controllerBegin = controllerMatrix;
+						
+						kinectBegin = kinect.cloudTransform;
+
+					}
+
+					//controller to temp matrix
+					//cloud poitns to controller
+					//clouds - tempmatrix
+					//reset controller
+					//TODO: ^^^^^ The above. Currently, the math isn't working out (see below)
+
+					//kinect.cloudTransform = controllerMatrix * kinectBegin;
+					//kinect.cloudTransform = controllerBegin * kinect.cloudTransform;
+					kinect.cloudTransform = controllerMatrix;
+
+
+					//kinect.cloudTransform = glm::mat4x4(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)); //example of how we can change this
+					//kinect.cloudTransform = controllerMatrix;
+					//glm::inverse(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[0]);
+
+					cout << controllerMatrix;
+					cout << "\n ---------------------------- \n";
+				}
+				else leftDown = false;
+
+				if (bIsRightTriggerPressed) {
+					
+					glm::mat4x4 controllerMatrix = glm::mat4x4(
+						-openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[0], //?
+						-openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[1], // -ve flips the scene upsidedown
+						openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[2], // -ve makes up and down rotate properly
+						openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]); //?
+					
+
+					if (!rightDown) {
+						rightDown = true;
+						controllerBegin = controllerMatrix;
+
+						kinectBegin = kinect.cloudTransform;
+					}
+
+
+					kinect.cloudTransform = kinectBegin * controllerMatrix;
+
+					cout << controllerMatrix;
+					cout << "\n ---------------------------- \n";
+				}
+				else rightDown = false;
 
 				vector <ofVec3f> pointsUpdate;
+				vector <ofVec3f> sizesUpdate;
 				for (int j = 0; j < num; j++) {
 					ofVec3f p;
 					//y and z values must be negative, otherwise kinect particles will be upside-down and reversed
-					p.x = cloud.xyz[j].x + origin.x - 0.5;
-					p.y = -cloud.xyz[j].y + origin.y; //this allows the floor to be at a decent level without bending down. for using the floor as calibration, add or subtract 0.5
-					p.z = -cloud.xyz[j].z + origin.z - 0.5;
+					p.x = cloud.xyz[j].x + origin.x;
+					p.y = cloud.xyz[j].y + origin.y;
+					p.z = cloud.xyz[j].z + origin.z;
 					//if(p.x != 0.f || p.y != 0.f || p.z != 0.f)
-						pointsUpdate.push_back(p);
+					pointsUpdate.push_back(p);
+					float size = ofRandom(50, 100);
+					sizesUpdate.push_back(ofVec3f(size));
 				}
-				ofVec3f ref1 = ofVec3f(0.f, 0.f, 0.f);
-				ofVec3f ref2 = ofVec3f(-0.5, -0.5, -0.5);
-				pointsUpdate.push_back(ref1); //reference point
+				ofVec3f ref1 = ofVec3f(-1.f, 0.f, -1.f);
+				ofVec3f ref2 = ofVec3f(0.f, 0.f, 0.f);
+				ofVec3f ref3 = ofVec3f(1.f, 0.f, 1.f);
+				
+				pointsUpdate.push_back(ref1); //reference point (closest to kinect)
 				pointsUpdate.push_back(ref2); //reference point
-				updatePoints(pointsUpdate);	//TODO: Reposition and re-orient the kinect space in the VR space. A L G O R I T H M S
+				pointsUpdate.push_back(ref3); //reference point
+				updatePoints(pointsUpdate, sizesUpdate);	//TODO: Reposition and re-orient the kinect space in the VR space. A L G O R I T H M S
 				//printf("Points Updated \n");
 				//printf("Point 0 of points: %f, %f, %f\n", points[0].x, points[0].y, points[0].z);
 				int total = (int)points.size();
 				vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
+				vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
 			}
 		}
 
@@ -299,7 +381,8 @@ public:
 					//addPoint(leftControllerPosition.x * 500.f, leftControllerPosition.y * 500.f, leftControllerPosition.z * 500.f);
 					//printf("Left Controller x: %f  y: %f  z: %f \n", leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
 
-					origin = ofVec3f(leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
+					//origin = ofVec3f(leftControllerPosition.x, leftControllerPosition.y, leftControllerPosition.z);
+					
 
 					if (leftControllerPolylines.size() == 0) {
 						leftControllerPolylines.push_back(ofPolyline());
@@ -338,7 +421,7 @@ public:
 					//addPoint(rightControllerPosition.x * 800.f, rightControllerPosition.y * 800.f, rightControllerPosition.z * 800.f);
 					//printf("Right Controller x: %f  y: %f  z: %f \n", rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 
-					origin = ofVec3f(rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
+					//origin = ofVec3f(rightControllerPosition.x, rightControllerPosition.y, rightControllerPosition.z);
 
 					if (rightControllerPolylines.size() == 0) {
 						rightControllerPolylines.push_back(ofPolyline());
