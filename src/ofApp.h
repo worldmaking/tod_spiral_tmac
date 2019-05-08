@@ -6,6 +6,39 @@
 
 #include "al/al_kinect2.h"
 
+void ThreadSleep(unsigned long nMilliseconds)
+{
+#if defined(_WIN32)
+	::Sleep(nMilliseconds);
+#elif defined(POSIX)
+	usleep(nMilliseconds * 1000);
+#endif
+}
+
+glm::mat4 ConvertSteamVRMatrixToMatrix4(const vr::HmdMatrix34_t &matPose)
+{
+	glm::mat4 matrixObj(
+		matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
+		matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
+		matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
+		matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], 1.0f
+	);
+	return matrixObj;
+}
+
+std::string GetTrackedDeviceString(vr::TrackedDeviceIndex_t unDevice, vr::TrackedDeviceProperty prop, vr::TrackedPropertyError *peError = NULL)
+{
+	uint32_t unRequiredBufferLen = vr::VRSystem()->GetStringTrackedDeviceProperty(unDevice, prop, NULL, 0, peError);
+	if (unRequiredBufferLen == 0)
+		return "";
+
+	char *pchBuffer = new char[unRequiredBufferLen];
+	unRequiredBufferLen = vr::VRSystem()->GetStringTrackedDeviceProperty(unDevice, prop, pchBuffer, unRequiredBufferLen, peError);
+	std::string sResult = pchBuffer;
+	delete[] pchBuffer;
+	return sResult;
+}
+
 class ofApp : public ofBaseApp {
 
 public:
@@ -32,6 +65,25 @@ public:
 	ofVec3f rightControllerPosition;
 	ofVec3f lastLeftControllerPosition;
 	ofVec3f lastRightControllerPosition;
+	std::vector< CGLRenderModel * > m_vecRenderModels;
+	//CGLRenderModel *FindOrLoadRenderModel(const char *pchRenderModelName);
+
+	struct ControllerInfo_t
+	{
+		vr::VRInputValueHandle_t m_source = vr::k_ulInvalidInputValueHandle;
+		vr::VRActionHandle_t m_actionPose = vr::k_ulInvalidActionHandle;
+		vr::VRActionHandle_t m_actionHaptic = vr::k_ulInvalidActionHandle;
+		glm::mat4 m_rmat4Pose;
+		CGLRenderModel *m_pRenderModel = nullptr;
+		std::string m_sRenderModelName;
+		bool m_bShowController = true;
+	};
+
+	ControllerInfo_t m_rHand[2];
+	GLint m_nRenderModelMatrixLocation;
+	GLuint m_unRenderModelProgramID;
+
+	ofShader controlShader;
 
 	std::ostringstream _strHelp;
 
@@ -57,6 +109,9 @@ public:
 
 	ofVec3f origin = ofVec3f(-1.f, 0.f, -1.f); //starts the kinect space closer to the kinect (The physical kniect is somewhere < -1,0,-1 in the VR space)
 	//ofVec3f cloudMan = ofVec3f(0.f, 0.f, 0.f);
+
+	glm::vec3 kinectPosition[2];
+	glm::vec3 controllerDragStartPosition;
 	
 
 	void setup() {
@@ -86,12 +141,17 @@ public:
 		// We need to pass the method we want ofxOpenVR to call when rending the scene
 		openVR.setup(std::bind(&ofApp::render, this, std::placeholders::_1));
 		openVR.setDrawControllers(true);
+		openVR.setRenderModelForTrackedDevices(true);
 		ofAddListener(openVR.ofxOpenVRControllerEvent, this, &ofApp::controllerEvent);
+
+		m_nRenderModelMatrixLocation = glGetUniformLocation(m_unRenderModelProgramID, "matrix");
 
 		shaderP.load("shaders/shader"); 
 
 		lastLeftControllerPosition.set(ofVec3f());
 		lastRightControllerPosition.set(ofVec3f());
+
+		controlShader.load("shaders_gl3/controller");
 
 		kinectTexture[0].allocate(cColorWidth, cColorHeight, GL_RGBA);
 		kinectTexture[1].allocate(cColorWidth, cColorHeight, GL_RGBA);
@@ -121,6 +181,13 @@ public:
 	}
 
 	void exit() {
+
+		for (std::vector< CGLRenderModel * >::iterator i = m_vecRenderModels.begin(); i != m_vecRenderModels.end(); i++)
+		{
+			delete (*i);
+		}
+		m_vecRenderModels.clear();
+
 		ofRemoveListener(openVR.ofxOpenVRControllerEvent, this, &ofApp::controllerEvent);
 		openVR.exit();
 	}
@@ -143,71 +210,54 @@ public:
 
 				int num = cDepthWidth * cDepthHeight;
 				float radius = 1;
-				
-				/*cout << kinect.cloudTransform;
-				cout << "\n -------------------------------- \n";*/
-
-				
-
 
 				//glm::mat4 cloudTransform = glm::mat4(1.); this is what kinect2 auto sets the cloud transform to be
 				if (bIsLeftTriggerPressed) {
 
-					glm::mat4x4 controllerMatrix = glm::mat4x4(
-						-openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[0], // [x] -ve removes mirror effect
-						-openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[1], // [y] -ve flips the scene rightside up
-						openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[2], // [z]
-						openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]); // [w]
+					glm::vec3 controllerTranslation = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]); 
 
 					if (!leftDown) {
+						// just started dragging:
 						leftDown = true;
-						controllerBegin = controllerMatrix;
-						
-						kinectBegin = kinect.cloudTransform;
+						controllerDragStartPosition = controllerTranslation;
+					}
+					else {
+						// we are already dragging
+						glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
+						controllerDragStartPosition = controllerTranslation;
 
+						// update our cloud:
+						kinectPosition[i] += delta;
 					}
 
-					//controller to temp matrix
-					//cloud poitns to controller
-					//clouds - tempmatrix
-					//reset controller
-					//TODO: ^^^^^ The above. Currently, the math isn't working out (see below)
+					kinect.cloudTransform = glm::translate(glm::mat4(1.), kinectPosition[i]);
 
-					//kinect.cloudTransform = controllerMatrix * kinectBegin;
-					//kinect.cloudTransform = controllerBegin * kinect.cloudTransform;
-					kinect.cloudTransform = controllerMatrix;
+					//printf("moved to %s\n", glm::to_string(kinect.cloudTransform).data());
 
-
-					//kinect.cloudTransform = glm::mat4x4(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)); //example of how we can change this
-					//kinect.cloudTransform = controllerMatrix;
-					//glm::inverse(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[0]);
-
-					cout << controllerMatrix;
-					cout << "\n ---------------------------- \n";
 				}
 				else leftDown = false;
 
 				if (bIsRightTriggerPressed) {
 					
-					glm::mat4x4 controllerMatrix = glm::mat4x4(
-						-openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[0], //?
-						-openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[1], // -ve flips the scene upsidedown
-						openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[2], // -ve makes up and down rotate properly
-						openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]); //?
-					
+					glm::vec3 controllerTranslation = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]);
 
 					if (!rightDown) {
+						// just started dragging:
 						rightDown = true;
-						controllerBegin = controllerMatrix;
+						controllerDragStartPosition = controllerTranslation;
+					}
+					else {
+						// we are already dragging
+						glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
+						controllerDragStartPosition = controllerTranslation;
 
-						kinectBegin = kinect.cloudTransform;
+						// update our cloud (*3 so the right controller is quicker):
+						kinectPosition[i] += (delta * 3);
 					}
 
+					kinect.cloudTransform = glm::translate(glm::mat4(1.), kinectPosition[i]);
 
-					kinect.cloudTransform = kinectBegin * controllerMatrix;
-
-					cout << controllerMatrix;
-					cout << "\n ---------------------------- \n";
+					//printf("moved to %s\n", glm::to_string(kinect.cloudTransform).data());
 				}
 				else rightDown = false;
 
@@ -246,6 +296,35 @@ public:
 		 	ofShowCursor();
 		}
 		openVR.update();
+
+		for (int eHand = 0; eHand <= 1; eHand++)
+		{
+			vr::InputPoseActionData_t poseData;
+			vr::EVRInputError err = vr::VRInput()->GetPoseActionData(m_rHand[eHand].m_actionPose, vr::TrackingUniverseStanding, 0, &poseData, sizeof(poseData), vr::k_ulInvalidInputValueHandle);
+			if (err != vr::VRInputError_None
+				|| !poseData.bActive || !poseData.pose.bPoseIsValid)
+			{
+				//printf("input %d %d %d %d\n", eHand, err, !poseData.bActive , !poseData.pose.bPoseIsValid);
+				m_rHand[eHand].m_bShowController = false;
+			}
+			else
+			{
+				m_rHand[eHand].m_rmat4Pose = ConvertSteamVRMatrixToMatrix4(poseData.pose.mDeviceToAbsoluteTracking);
+
+				vr::InputOriginInfo_t originInfo;
+				if (vr::VRInput()->GetOriginTrackedDeviceInfo(poseData.activeOrigin, &originInfo, sizeof(originInfo)) == vr::VRInputError_None
+					&& originInfo.trackedDeviceIndex != vr::k_unTrackedDeviceIndexInvalid)
+				{
+					std::string sRenderModelName = GetTrackedDeviceString(originInfo.trackedDeviceIndex, vr::Prop_RenderModelName_String);
+					if (sRenderModelName != m_rHand[eHand].m_sRenderModelName)
+					{
+						m_rHand[eHand].m_pRenderModel = FindOrLoadRenderModel(sRenderModelName.c_str());
+						m_rHand[eHand].m_sRenderModelName = sRenderModelName;
+					}
+				}
+			}
+		}
+
 		if (bIsLeftTriggerPressed) {
 			if (openVR.isControllerConnected(vr::TrackedControllerRole_LeftHand)) {
 				// Getting the translation component of the controller pose matrix
@@ -347,10 +426,27 @@ public:
 		
 		ofMatrix4x4 currentViewProjectionMatrix = openVR.getCurrentViewProjectionMatrix(nEye);
 
+		/*
 		draw_scene(currentViewProjectionMatrix);
 
-		
-		
+		controlShader.begin();
+		//controlShader.setUniformMatrix4f("matrix", matrix);
+
+		for (int eHand = 0; eHand <= 1; eHand++)
+		{
+			printf("Draw Controller %d %d %p\n", eHand, m_rHand[eHand].m_bShowController , !m_rHand[eHand].m_pRenderModel);
+			
+			if (!m_rHand[eHand].m_bShowController || !m_rHand[eHand].m_pRenderModel)
+				continue;
+
+			const glm::mat4 & matDeviceToTracking = m_rHand[eHand].m_rmat4Pose;
+			glm::mat4 matMVP = openVR.getCurrentViewProjectionMatrix(nEye) * matDeviceToTracking;
+			glUniformMatrix4fv(m_nRenderModelMatrixLocation, 1, GL_FALSE, glm::value_ptr(matMVP) );
+			
+			m_rHand[eHand].m_pRenderModel->Draw();
+		}
+
+		controlShader.end();
 
 		if (0) {
 			shaderP.begin();
@@ -366,7 +462,7 @@ public:
 			}
 			//vbo.draw(GL_POINTS, 0, (int)points.size());
 			shaderP.end();
-		}
+		}*/
 	}
 
 	void controllerEvent(ofxOpenVRControllerEventArgs& args) {
@@ -450,6 +546,73 @@ public:
 				}
 			}
 		}
+	}
+
+
+	CGLRenderModel *FindOrLoadRenderModel(const char *pchRenderModelName)
+	{
+		CGLRenderModel *pRenderModel = NULL;
+		for (std::vector< CGLRenderModel * >::iterator i = m_vecRenderModels.begin(); i != m_vecRenderModels.end(); i++)
+		{
+			if (!stricmp((*i)->GetName().c_str(), pchRenderModelName))
+			{
+				pRenderModel = *i;
+				break;
+			}
+		}
+
+		// load the model if we didn't find one
+		if (!pRenderModel)
+		{
+			vr::RenderModel_t *pModel;
+			vr::EVRRenderModelError error;
+			while (1)
+			{
+				error = vr::VRRenderModels()->LoadRenderModel_Async(pchRenderModelName, &pModel);
+				if (error != vr::VRRenderModelError_Loading)
+					break;
+
+				ThreadSleep(1);
+			}
+
+			if (error != vr::VRRenderModelError_None)
+			{
+				printf("Unable to load render model %s - %s\n", pchRenderModelName, vr::VRRenderModels()->GetRenderModelErrorNameFromEnum(error));
+				return NULL; // move on to the next tracked device
+			}
+
+			vr::RenderModel_TextureMap_t *pTexture;
+			while (1)
+			{
+				error = vr::VRRenderModels()->LoadTexture_Async(pModel->diffuseTextureId, &pTexture);
+				if (error != vr::VRRenderModelError_Loading)
+					break;
+
+				ThreadSleep(1);
+			}
+
+			if (error != vr::VRRenderModelError_None)
+			{
+				printf("Unable to load render texture id:%d for render model %s\n", pModel->diffuseTextureId, pchRenderModelName);
+				vr::VRRenderModels()->FreeRenderModel(pModel);
+				return NULL; // move on to the next tracked device
+			}
+
+			pRenderModel = new CGLRenderModel(pchRenderModelName);
+			if (!pRenderModel->BInit(*pModel, *pTexture))
+			{
+				printf("Unable to create GL model from render model %s\n", pchRenderModelName);
+				delete pRenderModel;
+				pRenderModel = NULL;
+			}
+			else
+			{
+				m_vecRenderModels.push_back(pRenderModel);
+			}
+			vr::VRRenderModels()->FreeRenderModel(pModel);
+			vr::VRRenderModels()->FreeTexture(pTexture);
+		}
+		return pRenderModel;
 	}
 
 	//--------------------------------------------------------------

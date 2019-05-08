@@ -243,6 +243,7 @@ struct CloudDevice {
 					registration->getPointXYZRGB (&undistorted, &registered, r, c, pt.x, pt.y, pt.z, rgb);
 					pt = al_fixnan(pt);
 					pt.z = -pt.z; // freenect puts Z +ve, but GL expects -ve
+					pt.y = -pt.y; // flip Y to preserve right-handed coordinate system
 					xyzptr[i] = transform(cloudTransform, pt);
 
 					const uint8_t *cp = reinterpret_cast<uint8_t*>(&rgb);
