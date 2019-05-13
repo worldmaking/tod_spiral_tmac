@@ -242,6 +242,7 @@ struct CloudDevice {
 					//registration->getPointXYZ(&undistorted, r, c, pt.x, pt.y, pt.z);
 					registration->getPointXYZRGB (&undistorted, &registered, r, c, pt.x, pt.y, pt.z, rgb);
 					pt = al_fixnan(pt);
+					pt.x = -pt.x;
 					pt.z = -pt.z; // freenect puts Z +ve, but GL expects -ve
 					pt.y = -pt.y; // flip Y to preserve right-handed coordinate system
 					xyzptr[i] = transform(cloudTransform, pt);
@@ -270,7 +271,7 @@ struct CloudDevice {
 			listener.release(frames);
 
 			if (fps.measure()) {
-				printf("freenect %d fps %f\n", id, fps.fps);
+				//printf("freenect %d fps %f\n", id, fps.fps);
 			}
 		
 		}

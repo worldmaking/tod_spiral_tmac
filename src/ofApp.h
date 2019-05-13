@@ -97,6 +97,8 @@ public:
 	bool isFullscreen = false;
 	bool bShowHelp = false;
 
+	bool gotCalled = true;
+
 	CloudDeviceManager cloudDeviceManager;
 
 	// vector to store all values
@@ -129,7 +131,7 @@ public:
 	//CGLRenderModel *FindOrLoadRenderModel(const char *pchRenderModelName);
 
 	bool calibrate = true;
-	bool calZero = false;
+	bool calZero = true;
 	bool calOne = false;
 
 
@@ -160,10 +162,11 @@ public:
 	glm::mat4x4 controllerBegin;
 	glm::mat4x4 kinectBegin;
 
-	ofVec3f origin = ofVec3f(-1.f, 0.f, -1.f); //starts the kinect space closer to the kinect (The physical kniect is somewhere < -1,0,-1 in the VR space)
-
 	glm::vec3 kinectPosition[2];
+	glm::quat kinectOrientation[2];
+	glm::mat4 controllerDragStartPose;
 	glm::vec3 controllerDragStartPosition;
+	glm::quat controllerDragStartOrientation;
 	
 	IsosurfaceVbo vboIso;
 	ofShader shaderIso;
@@ -174,6 +177,7 @@ public:
 	void setup() {
 		Simulation& sim = Simulation::get();
 		sim.setup();
+
 
 		isFullscreen = 0;
 
@@ -226,8 +230,8 @@ public:
 
 		// upload the data to the vbo
 		int total = (int)points.size();
-		vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
-		vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
+		vbo.setVertexData(&points[0], total, GL_DYNAMIC_DRAW);
+		vbo.setNormalData(&sizes[0], total, GL_DYNAMIC_DRAW);
 		shader.load("shaders_gl3/point");
 
 		// upload isosurface data to gpu
@@ -267,30 +271,128 @@ public:
 		float size = 1;
 		sizes.push_back(ofVec3f(size));
 	}
-	
-	void calculateTranslations() {
-		double ransacThreshold = 3;
-		double confidence = 0.99;
-		std::vector<cv::Point3f> src, dst;
-		src.push_back(cv::Point3f(1, 0, 0));
-		src.push_back(cv::Point3f(0, 1, 0));
-		src.push_back(cv::Point3f(0, 0, 1));
-		src.push_back(cv::Point3f(1, 0, 1));
-		//src.push_back(cv::Point3f(1, 1, 1));
 
-		dst.push_back(cv::Point3f(1, 0, 0));
-		dst.push_back(cv::Point3f(0, 1, 0));
-		dst.push_back(cv::Point3f(0, 0, 1));
-		dst.push_back(cv::Point3f(1, 0, 1));
-		//dst.push_back(cv::Point3f(1, 1, 1));
+	cv::Vec3d CalculateMean(const cv::Mat_<cv::Vec3d> &points)
+	{
+		cv::Mat_<cv::Vec3d> result;
+		cv::reduce(points, result, 0, CV_REDUCE_AVG);
+		return result(0, 0);
+	}
+
+	cv::Mat_<double> FindRigidTransform(const cv::Mat_<cv::Vec3d> &points1, const cv::Mat_<cv::Vec3d> points2)
+	{
+		/* Calculate centroids. */
+		cv::Vec3d t1 = -CalculateMean(points1);
+		cv::Vec3d t2 = -CalculateMean(points2);
+
+		cv::Mat_<double> T1 = cv::Mat_<double>::eye(4, 4);
+		T1(0, 3) = t1[0];
+		T1(1, 3) = t1[1];
+		T1(2, 3) = t1[2];
+
+		cv::Mat_<double> T2 = cv::Mat_<double>::eye(4, 4);
+		T2(0, 3) = -t2[0];
+		T2(1, 3) = -t2[1];
+		T2(2, 3) = -t2[2];
+
+		/* Calculate covariance matrix for input points. Also calculate RMS deviation from centroid
+		 * which is used for scale calculation.
+		 */
+		cv::Mat_<double> C(3, 3, 0.0);
+		double p1Rms = 0, p2Rms = 0;
+		for (int ptIdx = 0; ptIdx < points1.rows; ptIdx++) {
+			cv::Vec3d p1 = points1(ptIdx, 0) + t1;
+			cv::Vec3d p2 = points2(ptIdx, 0) + t2;
+			p1Rms += p1.dot(p1);
+			p2Rms += p2.dot(p2);
+			for (int i = 0; i < 3; i++) {
+				for (int j = 0; j < 3; j++) {
+					C(i, j) += p2[i] * p1[j];
+				}
+			}
+		}
+
+		cv::Mat_<double> u, s, vh;
+		cv::SVD::compute(C, s, u, vh);
+
+		cv::Mat_<double> R = u * vh;
+
+		if (cv::determinant(R) < 0) {
+			R -= u.col(2) * (vh.row(2) * 2.0);
+		}
+
+		double scale = sqrt(p2Rms / p1Rms);
+		R *= scale;
+
+		cv::Mat_<double> M = cv::Mat_<double>::eye(4, 4);
+		R.copyTo(M.colRange(0, 3).rowRange(0, 3));
+
+		cv::Mat_<double> result = T2 * M * T1;
+		result /= result(3, 3);
+
+		return result.rowRange(0, 3);
+	}
+	
+	void calculateTranslations(calibrationPoints &calibrationPoints, CloudDevice &device) {
+		cv::Mat_<cv::Vec3d> src, dst;
+		for (int i = 0; i < calibrationPoints.vrPositions.size(); i++) {
+			glm::vec3& vr = calibrationPoints.vrPositions[i];
+			glm::vec3& kp = calibrationPoints.kinectPositions[i];
+			src.push_back(cv::Vec3d(vr.x, vr.y, vr.z));
+			dst.push_back(cv::Vec3d(kp.x, kp.y, kp.z));
+			//printf("result %s\n", glm::to_string(kp).data());
+		}
+
+		cv::Mat_<double> aff = FindRigidTransform(src, dst);
+		std::cout << aff << std::endl;
+
+		double * affdata = aff.ptr<double>(0);
+		printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
+
+		device.cloudTransform = glm::inverse(glm::mat4(
+			glm::vec4(affdata[0], affdata[4], affdata[8], 0.),
+			glm::vec4(affdata[1], affdata[5], affdata[9], 0.),
+			glm::vec4(affdata[2], affdata[6], affdata[10], 0.),
+			glm::vec4(affdata[3], affdata[7], affdata[11], 1.)
+		));
+
+		printf("cloudTransform %s\n", glm::to_string(device.cloudTransform).data());
+
+
+		/*
+		double ransacThreshold = 6;
+		double confidence = 0.995;
+		std::vector<cv::Point3f> src, dst;
+
+		for (int i = 0; i < calibrationPoints.vrPositions.size(); i++) {
+			glm::vec3& vr = calibrationPoints.vrPositions[i];
+			glm::vec3& kp = calibrationPoints.kinectPositions[i];
+			src.push_back(cv::Point3f(vr.x, vr.y, vr.z));
+			dst.push_back(cv::Point3f(kp.x, kp.y, kp.z));
+			printf("result %s\n", glm::to_string(kp).data());
+		}
 
 		cv::Mat aff(3, 4, CV_64F);
 		std::vector<uchar> inliers;
 		// res should be 1 for OK
 		// inliers.size() tells us how many of the given points were successfully matched
-		int res = cv::estimateAffine3D(src, dst, aff, inliers, ransacThreshold, confidence);
+		int res = cv::estimateAffine3D(dst, src, aff, inliers, ransacThreshold, confidence);
 		printf("result %d %d\n", res, inliers.size());
 		std::cout << aff << std::endl;
+		if (res) {
+			double * affdata = aff.ptr<double>(0);
+			printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
+
+			device.cloudTransform = glm::mat4(
+				glm::vec4(affdata[0], affdata[4], affdata[8], 0.),
+				glm::vec4(affdata[1], affdata[5], affdata[9], 0.),
+				glm::vec4(affdata[2], affdata[6], affdata[10], 0.),
+				glm::vec4(affdata[3], affdata[7], affdata[11], 1.)
+			);
+
+			printf("cloudTransform %s\n", glm::to_string(device.cloudTransform).data());
+		}
+		*/
 	}
 
 	void updatePoints(vector <ofVec3f> pUpdate, vector <ofVec3f> sUpdate) {
@@ -335,68 +437,102 @@ public:
 
 				//Calibration checker
 				if ((calZero && i == 0) || (calOne && i == 1)) {
-					if (bIsLeftTriggerPressed && calibrate) {
+					if (calibrate) {
+						if (bIsLeftTriggerPressed || bIsRightTriggerPressed) {
+							glm::mat4 controllerPose;
+							float speed = 1.;
+							bool dragStart = false;
 
-						glm::vec3 controllerTranslation = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]);
+							if (bIsLeftTriggerPressed) {
+								controllerPose = openVR.getControllerPose(vr::TrackedControllerRole_LeftHand);
+								if (!leftDown) {
+									leftDown = true;
+									dragStart = true;
+								}
+							}
 
-						if (!leftDown) {
-							// just started dragging:
-							leftDown = true;
-							controllerDragStartPosition = controllerTranslation;
+							if (bIsRightTriggerPressed) {
+								speed = 1 / 3.;
+								controllerPose = openVR.getControllerPose(vr::TrackedControllerRole_RightHand);
+								if (!rightDown) {
+									rightDown = true;
+									dragStart = true;
+								}
+							}
+
+							glm::vec3 controllerTranslation = glm::vec3(controllerPose[3]);
+							glm::quat controllerOrientation = glm::quat_cast(glm::mat3(controllerPose));
+
+							if (dragStart) {
+								// just started dragging:
+								controllerDragStartPose = controllerPose;
+								controllerDragStartPosition = controllerTranslation;
+								controllerDragStartOrientation = controllerOrientation;
+								printf("dragStart %s\n", glm::to_string(controllerDragStartOrientation).data());
+							}
+							else {
+								// we are already dragging
+								printf("drag %s\n", glm::to_string(controllerDragStartOrientation).data());
+
+								// compute delta position
+								glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
+								printf("delta %s\n", glm::to_string(delta).data());
+								controllerDragStartPosition = controllerTranslation;
+								kinectPosition[i] += delta * speed;
+
+								// compute delta orientation
+								glm::quat qdelta = controllerOrientation * glm::inverse(controllerDragStartOrientation);
+								controllerDragStartOrientation = controllerOrientation;
+								printf("qdelta %s\n", glm::to_string(qdelta).data());
+								//qdelta = glm::slerp(glm::quat(), glm::normalize(qdelta), speed);
+								kinectOrientation[i] = glm::normalize(qdelta * kinectOrientation[i]);
+
+								glm::mat4 trans = glm::translate(kinectPosition[i]);
+								glm::mat4 rot = glm::mat4_cast(kinectOrientation[i]);
+
+								glm::mat4 pivot = glm::translate(controllerTranslation);
+								glm::mat4 antipivot = glm::translate(-controllerTranslation);
+
+								// these are all the distinct combinations. try to find which one actually works.
+								kinect.cloudTransform = pivot * rot * trans*antipivot;
+								kinect.cloudTransform = antipivot * rot * trans*pivot;
+								kinect.cloudTransform = pivot*trans * rot * antipivot;
+								kinect.cloudTransform = antipivot*trans * rot * pivot;
+
+							}
 						}
 						else {
-							// we are already dragging
-							glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
-							controllerDragStartPosition = controllerTranslation;
-
-							// update our cloud [Moves kinect #1]:
-							kinectPosition[i] += delta;
+							leftDown = rightDown = false;
 						}
-
-						kinect.cloudTransform = glm::translate(glm::mat4(1.), kinectPosition[i]);
-
-						//printf("moved to %s\n", glm::to_string(kinect.cloudTransform).data());
-
 					}
-					else leftDown = false;
 
-					if (bIsRightTriggerPressed && calibrate) {
 
-						glm::vec3 controllerTranslation = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]);
+					glm::vec3 ctrlpt = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]);
+					glm::mat4 cloudInverse = glm::inverse(cloudDeviceManager.devices[i].cloudTransform);
+					glm::vec3 untransformed = glm::vec3(cloudInverse * glm::vec4(ctrlpt, 1.f));
+					//printf("ctrlpt %s untransformed %s kinect %s\n", glm::to_string(ctrlpt).data(), glm::to_string(untransformed).data(), glm::to_string(kinectPosition[i]).data());
 
-						if (!rightDown) {
-							// just started dragging:
-							rightDown = true;
-							controllerDragStartPosition = controllerTranslation;
-						}
-						else {
-							// we are already dragging
-							glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
-							controllerDragStartPosition = controllerTranslation;
-
-							// update our cloud [Moves kinect #2]:
-							kinectPosition[i] += delta * 3;
-						}
-
-						kinect.cloudTransform = glm::translate(glm::mat4(1.), kinectPosition[i]);
-
-						//printf("moved to %s\n", glm::to_string(kinect.cloudTransform).data());
-					}
-					else rightDown = false;
 
 					//grabbing left or right controller position and kinect position with touchpad
 					if (bIsLeftTouchpadPressed && calibrate && !waitForPadL) {
-						kinectCalibrator[i].vrPositions.push_back(glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]));
-						kinectCalibrator[i].kinectPositions.push_back(kinectPosition[i]);
-						printf("Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
-						printf("Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
+						glm::vec3 ctrlpt = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_LeftHand)[3]);
+						kinectCalibrator[i].vrPositions.push_back(ctrlpt);
+						glm::mat4 cloudInverse = glm::inverse(cloudDeviceManager.devices[i].cloudTransform);
+						glm::vec3 untransformed = glm::vec3(cloudInverse * glm::vec4(ctrlpt, 1.f));
+						kinectCalibrator[i].kinectPositions.push_back(untransformed);
+						printf("TrackedControllerRole_LeftHand Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
+						printf("TrackedControllerRole_LeftHand Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadL = true;
 					}
 					else if (!bIsLeftTouchpadPressed)
 						waitForPadL = false;
 					if (bIsRightTouchpadPressed && calibrate && !waitForPadR) {
-						kinectCalibrator[i].vrPositions.push_back(glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]));
-						kinectCalibrator[i].kinectPositions.push_back(kinectPosition[i]);
+
+						glm::vec3 ctrlpt = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]);
+						kinectCalibrator[i].vrPositions.push_back(ctrlpt);
+						glm::mat4 cloudInverse = glm::inverse(cloudDeviceManager.devices[i].cloudTransform);
+						glm::vec3 untransformed = glm::vec3(cloudInverse * glm::vec4(ctrlpt, 1.f));
+						kinectCalibrator[i].kinectPositions.push_back(untransformed);
 						printf("Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
 						printf("Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadR = true;
@@ -408,6 +544,8 @@ public:
 						kinectCalibrator[i].vrPositions.pop_back();
 						kinectCalibrator[i].kinectPositions.pop_back();
 						waitForGripL = true;
+						gotCalled = true;
+						cloudDeviceManager.devices[i].cloudTransform = glm::mat4();
 					}
 					else if (!bIsLeftGripPressed)
 						waitForGripL = false;
@@ -415,28 +553,28 @@ public:
 						kinectCalibrator[i].vrPositions.pop_back();
 						kinectCalibrator[i].kinectPositions.pop_back();
 						waitForGripR = true;
+						gotCalled = true; 
+						cloudDeviceManager.devices[i].cloudTransform = glm::mat4();
 					}
 					else if (!bIsRightGripPressed)
 						waitForGripR = false;
 				}
 
+				
+
 				if (kinectCalibrator[i].kinectPositions.size() >= 4) {
-
-					calculateTranslations();
-					int size = kinectCalibrator[i].vrPositions.size();
-					for (int i = size-1; i > 0; i--) {
-						kinectCalibrator[i].vrPositions.pop_back();
-						kinectCalibrator[i].kinectPositions.pop_back();
+					
+					if (gotCalled) {
+						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
+						gotCalled = false;
 					}
-
-
 				}
 
 				for (int j = 0; j < num; j++) {
 					ofVec3f p;
-					p.x = cloud.xyz[j].x + origin.x;
-					p.y = cloud.xyz[j].y + origin.y;
-					p.z = cloud.xyz[j].z + origin.z;
+					p.x = cloud.xyz[j].x;
+					p.y = cloud.xyz[j].y;
+					p.z = cloud.xyz[j].z;
 
 					pointsUpdate.push_back(p);
 					float size = 1;
