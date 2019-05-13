@@ -2,6 +2,12 @@
 #include "ofApp.h"
 #include "ofRenderApp.h"
 
+Simulation simulation;
+
+Simulation& Simulation::get() {
+	return simulation;
+}
+
 //========================================================================
 int main( ){
 

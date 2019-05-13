@@ -68,7 +68,7 @@ public:
 		if (0) {
 			ofSetupScreen();
 			camera.begin();
-			app->draw_scene(camera.getModelViewProjectionMatrix());
+			app->draw_scene(camera.getModelViewMatrix(), camera.getProjectionMatrix());
 			camera.end();
 		}
 

@@ -6,6 +6,14 @@
 
 #include "al/al_kinect2.h"
 
+#include "shared.h"
+#include "simulation.h"
+
+#include "opencv2/core.hpp"
+#include "opencv2/calib3d.hpp"
+#include "opencv2/features2d.hpp"
+#include "opencv2/core/affine.hpp"
+
 void ThreadSleep(unsigned long nMilliseconds)
 {
 #if defined(_WIN32)
@@ -39,9 +47,53 @@ std::string GetTrackedDeviceString(vr::TrackedDeviceIndex_t unDevice, vr::Tracke
 	return sResult;
 }
 
-class ofApp : public ofBaseApp {
+/*
+	al::Isosurface iso;
+	iso.level(isolevel=0.);
+	// field is a DIM*DIM*DIM array of single floats
+	// voxelsize is size of a voxel in opengl units
+	generate(field, DIM, voxelsize=1.);
 
+*/
+class IsosurfaceVbo {
 public:
+	
+	//gl::VboMeshRef mVboMesh;
+	ofVbo vbo;
+	
+	void update_gpu(al::Isosurface &iso) {
+		vbo.setNormalData(&iso.vertices().elems()->normal.x, iso.vertices().size(), GL_DYNAMIC_DRAW, sizeof(al::Isosurface::VertexData));
+		vbo.setVertexData(&iso.vertices().elems()->position.x, 3, iso.vertices().size(), GL_DYNAMIC_DRAW, sizeof(al::Isosurface::VertexData));
+		vbo.setIndexData(iso.indices().elems(), iso.indices().size(), GL_DYNAMIC_DRAW);
+	}
+	
+	void draw() {
+		vbo.drawElements(GL_TRIANGLES, vbo.getNumIndices());
+	}
+};
+
+
+struct ControllerInfo_t
+{
+	vr::VRInputValueHandle_t m_source = vr::k_ulInvalidInputValueHandle;
+	vr::VRActionHandle_t m_actionPose = vr::k_ulInvalidActionHandle;
+	vr::VRActionHandle_t m_actionHaptic = vr::k_ulInvalidActionHandle;
+	glm::mat4 m_rmat4Pose;
+	CGLRenderModel *m_pRenderModel = nullptr;
+	std::string m_sRenderModelName;
+	bool m_bShowController = true;
+};
+
+struct calibrationPoints
+{
+	std::vector<glm::vec3> vrPositions;
+	std::vector<glm::vec3> kinectPositions;
+};
+
+class ofApp : public ofBaseApp {
+public:
+
+
 	bool isFullscreen = false;
 	bool bShowHelp = false;
 
@@ -80,22 +132,6 @@ public:
 	bool calZero = false;
 	bool calOne = false;
 
-	struct ControllerInfo_t
-	{
-		vr::VRInputValueHandle_t m_source = vr::k_ulInvalidInputValueHandle;
-		vr::VRActionHandle_t m_actionPose = vr::k_ulInvalidActionHandle;
-		vr::VRActionHandle_t m_actionHaptic = vr::k_ulInvalidActionHandle;
-		glm::mat4 m_rmat4Pose;
-		CGLRenderModel *m_pRenderModel = nullptr;
-		std::string m_sRenderModelName;
-		bool m_bShowController = true;
-	};
-
-	struct calibrationPoints
-	{
-		std::vector<glm::vec3> vrPositions;
-		std::vector<glm::vec3> kinectPositions;
-	};
 
 	calibrationPoints kinectCalibrator[2];
 
@@ -129,8 +165,16 @@ public:
 	glm::vec3 kinectPosition[2];
 	glm::vec3 controllerDragStartPosition;
 	
+	IsosurfaceVbo vboIso;
+	ofShader shaderIso;
+
+	glm::mat4 transformedPoints;
+	glm::mat4 viewMatrix;
 
 	void setup() {
+		Simulation& sim = Simulation::get();
+		sim.setup();
+
 		isFullscreen = 0;
 
 		if(1){
@@ -185,6 +229,34 @@ public:
 		vbo.setVertexData(&points[0], total, GL_STATIC_DRAW);
 		vbo.setNormalData(&sizes[0], total, GL_STATIC_DRAW);
 		shader.load("shaders_gl3/point");
+
+		// upload isosurface data to gpu
+		vboIso.update_gpu(sim.isosurface);
+		shaderIso.load("shaders_gl3/iso");
+
+		//double ransacThreshold = 3;
+		//double confidence = 0.99;
+		//std::vector<cv::Point3f> src, dst;
+		//src.push_back(cv::Point3f(1, 0, 0));
+		//src.push_back(cv::Point3f(0, 1, 0));
+		//src.push_back(cv::Point3f(0, 0, 1));
+		//src.push_back(cv::Point3f(1, 0, 1));
+		////src.push_back(cv::Point3f(1, 1, 1));
+
+		//dst.push_back(cv::Point3f(1, 0, 0));
+		//dst.push_back(cv::Point3f(0, 1, 0));
+		//dst.push_back(cv::Point3f(0, 0, 1));
+		//dst.push_back(cv::Point3f(1, 0, 1));
+		////dst.push_back(cv::Point3f(1, 1, 1));
+
+		//cv::Mat aff(3, 4, CV_64F);
+		//std::vector<uchar> inliers;
+		//// res should be 1 for OK
+		//// inliers.size() tells us how many of the given points were successfully matched
+		//int res = cv::estimateAffine3D(src, dst, aff, inliers, ransacThreshold, confidence);
+		////printf("result %d %d\n", res, inliers.size());
+		////std::cout << aff << std::endl;
+		
 	}
 
 	void addPoint(float x, float y, float z) {
@@ -194,6 +266,31 @@ public:
 		// we are passing the size in as a normal x position
 		float size = 1;
 		sizes.push_back(ofVec3f(size));
+	}
+	
+	void calculateTranslations() {
+		double ransacThreshold = 3;
+		double confidence = 0.99;
+		std::vector<cv::Point3f> src, dst;
+		src.push_back(cv::Point3f(1, 0, 0));
+		src.push_back(cv::Point3f(0, 1, 0));
+		src.push_back(cv::Point3f(0, 0, 1));
+		src.push_back(cv::Point3f(1, 0, 1));
+		//src.push_back(cv::Point3f(1, 1, 1));
+
+		dst.push_back(cv::Point3f(1, 0, 0));
+		dst.push_back(cv::Point3f(0, 1, 0));
+		dst.push_back(cv::Point3f(0, 0, 1));
+		dst.push_back(cv::Point3f(1, 0, 1));
+		//dst.push_back(cv::Point3f(1, 1, 1));
+
+		cv::Mat aff(3, 4, CV_64F);
+		std::vector<uchar> inliers;
+		// res should be 1 for OK
+		// inliers.size() tells us how many of the given points were successfully matched
+		int res = cv::estimateAffine3D(src, dst, aff, inliers, ransacThreshold, confidence);
+		printf("result %d %d\n", res, inliers.size());
+		std::cout << aff << std::endl;
 	}
 
 	void updatePoints(vector <ofVec3f> pUpdate, vector <ofVec3f> sUpdate) {
@@ -323,6 +420,17 @@ public:
 						waitForGripR = false;
 				}
 
+				if (kinectCalibrator[i].kinectPositions.size() >= 4) {
+
+					calculateTranslations();
+					int size = kinectCalibrator[i].vrPositions.size();
+					for (int i = size-1; i > 0; i--) {
+						kinectCalibrator[i].vrPositions.pop_back();
+						kinectCalibrator[i].kinectPositions.pop_back();
+					}
+
+
+				}
 
 				for (int j = 0; j < num; j++) {
 					ofVec3f p;
@@ -440,15 +548,39 @@ public:
 		}
 	}
 
-	void draw_scene(ofMatrix4x4 viewMatrix) {
+	void draw_scene(glm::mat4 viewMatrix, glm::mat4 projMatrix) {
+		// TODO: is this in Simulation/shared?
+		double now_s = ofGetElapsedTimeMillis() * 0.001;
+		glm::mat4 viewProjectionMatrix = projMatrix * viewMatrix;
+
+		
+
 		glDepthMask(GL_FALSE);
 		// this makes everything look glowy :)
 		ofEnableBlendMode(OF_BLENDMODE_ADD);
+
+		shaderIso.begin();
+		shaderIso.setUniformMatrix4f("ciViewMatrix", viewMatrix);
+		shaderIso.setUniformMatrix4f("ciProjectionMatrix", projMatrix);
+		shaderIso.setUniform1f("uNow", now_s);
+		// TODO:
+		//shaderIso.setUniform1i("uGradient", 0);
+		// bind mGooTex
+		{ // wireframe
+			shaderIso.setUniform1f("uAlpha", 0.15f);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			vboIso.draw();
+		}
+		shaderIso.setUniform1f("uAlpha", 0.2f);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		vboIso.draw();
+		shaderIso.end();
+
 		ofEnablePointSprites();
 
 		shader.begin();
 		shader.setUniform1f("size", 2.f);
-		shader.setUniformMatrix4f("modelViewProjectionMatrix", viewMatrix);
+		shader.setUniformMatrix4f("modelViewProjectionMatrix", viewProjectionMatrix);
 
 		glPointSize(40.f);
 
@@ -466,10 +598,11 @@ public:
 
 	void render(vr::Hmd_Eye nEye) {
 		
-		ofMatrix4x4 currentViewProjectionMatrix = openVR.getCurrentViewProjectionMatrix(nEye);
+		viewMatrix = openVR.getCurrentViewMatrix(nEye);
+		glm::mat4 projMatrix = openVR.getCurrentProjectionMatrix(nEye);
 
 		
-		draw_scene(currentViewProjectionMatrix);
+		draw_scene(viewMatrix, projMatrix);
 
 		/*controlShader.begin();
 		//controlShader.setUniformMatrix4f("matrix", matrix);
