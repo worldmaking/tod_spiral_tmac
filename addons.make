@@ -1,5 +1,6 @@
 ofxAssimpModelLoader
+ofxJSON
 ofxNetwork
 ofxOpenCv
-ofxOsc
 ofxOpenVR
+ofxOsc

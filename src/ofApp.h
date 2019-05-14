@@ -14,6 +14,10 @@
 #include "opencv2/features2d.hpp"
 #include "opencv2/core/affine.hpp"
 
+#include "json/json.h"
+#include <iostream>
+#include <fstream>
+
 void ThreadSleep(unsigned long nMilliseconds)
 {
 #if defined(_WIN32)
@@ -334,6 +338,9 @@ public:
 	}
 	
 	void calculateTranslations(calibrationPoints &calibrationPoints, CloudDevice &device) {
+
+		if (calibrationPoints.kinectPositions.size() < 4) return;
+
 		cv::Mat_<cv::Vec3d> src, dst;
 		for (int i = 0; i < calibrationPoints.vrPositions.size(); i++) {
 			glm::vec3& vr = calibrationPoints.vrPositions[i];
@@ -347,7 +354,7 @@ public:
 		std::cout << aff << std::endl;
 
 		double * affdata = aff.ptr<double>(0);
-		printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
+		//printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
 
 		device.cloudTransform = glm::inverse(glm::mat4(
 			glm::vec4(affdata[0], affdata[4], affdata[8], 0.),
@@ -358,6 +365,62 @@ public:
 
 		printf("cloudTransform %s\n", glm::to_string(device.cloudTransform).data());
 
+		Json::Value event;
+	
+		Json::Value vec0(Json::arrayValue);
+		Json::Value vec1(Json::arrayValue);
+		Json::Value vec2(Json::arrayValue);
+		Json::Value vec3(Json::arrayValue);
+
+		//std::string test = glm::to_string(device.cloudTransform).data();
+
+		vec0.append(device.cloudTransform[0][0]);
+		vec0.append(device.cloudTransform[0][1]);
+		vec0.append(device.cloudTransform[0][2]);
+		vec0.append(device.cloudTransform[0][3]);
+
+		vec1.append(device.cloudTransform[1][0]);
+		vec1.append(device.cloudTransform[1][1]);
+		vec1.append(device.cloudTransform[1][2]);
+		vec1.append(device.cloudTransform[1][3]);
+
+		vec2.append(device.cloudTransform[2][0]);
+		vec2.append(device.cloudTransform[2][1]);
+		vec2.append(device.cloudTransform[2][2]);
+		vec2.append(device.cloudTransform[2][3]);
+
+		vec3.append(device.cloudTransform[3][0]);
+		vec3.append(device.cloudTransform[3][1]);
+		vec3.append(device.cloudTransform[3][2]);
+		vec3.append(device.cloudTransform[3][3]);
+
+		/*vec.append(affdata[4]);
+		vec.append(affdata[8]);
+		vec.append(0.);
+		vec.append(affdata[1]);
+		vec.append(affdata[5]);
+		vec.append(affdata[9]);
+		vec.append(0.);
+		*/
+
+		//mat4.append(Json::Value((affdata[1], affdata[5], affdata[9], 0.)));
+		//mat4.append(Json::Value((affdata[2], affdata[6], affdata[10], 0.)));
+		event["kinect"]["0"] = vec0;
+		event["kinect"]["1"] = vec1;
+		event["kinect"]["2"] = vec2;
+		event["kinect"]["3"] = vec3;
+
+		std::cout << event << std::endl;
+
+		std::ofstream file_id;
+		file_id.open("kinectData.txt");
+
+		//populate 'value_obj' with the objects, arrays etc.
+
+		Json::StyledWriter styledWriter;
+		file_id << styledWriter.write(event);
+
+		file_id.close();
 
 		/*
 		double ransacThreshold = 6;
@@ -468,37 +531,54 @@ public:
 								controllerDragStartPose = controllerPose;
 								controllerDragStartPosition = controllerTranslation;
 								controllerDragStartOrientation = controllerOrientation;
-								printf("dragStart %s\n", glm::to_string(controllerDragStartOrientation).data());
+								//printf("dragStart %s\n", glm::to_string(controllerDragStartOrientation).data());
 							}
 							else {
 								// we are already dragging
-								printf("drag %s\n", glm::to_string(controllerDragStartOrientation).data());
+								//printf("drag %s\n", glm::to_string(controllerDragStartOrientation).data());
 
 								// compute delta position
 								glm::vec3 delta = controllerTranslation - controllerDragStartPosition;
-								printf("delta %s\n", glm::to_string(delta).data());
+								//printf("delta %s\n", glm::to_string(delta).data());
 								controllerDragStartPosition = controllerTranslation;
 								kinectPosition[i] += delta * speed;
 
 								// compute delta orientation
 								glm::quat qdelta = controllerOrientation * glm::inverse(controllerDragStartOrientation);
 								controllerDragStartOrientation = controllerOrientation;
-								printf("qdelta %s\n", glm::to_string(qdelta).data());
+								//printf("qdelta %s\n", glm::to_string(qdelta).data());
 								//qdelta = glm::slerp(glm::quat(), glm::normalize(qdelta), speed);
 								kinectOrientation[i] = glm::normalize(qdelta * kinectOrientation[i]);
 
 								glm::mat4 trans = glm::translate(kinectPosition[i]);
 								glm::mat4 rot = glm::mat4_cast(kinectOrientation[i]);
 
+								//glm::mat4 pivot = controllerPose; 
 								glm::mat4 pivot = glm::translate(controllerTranslation);
-								glm::mat4 antipivot = glm::translate(-controllerTranslation);
+								glm::mat4 antipivot = glm::inverse(pivot);
 
 								// these are all the distinct combinations. try to find which one actually works.
-								kinect.cloudTransform = pivot * rot * trans*antipivot;
-								kinect.cloudTransform = antipivot * rot * trans*pivot;
-								kinect.cloudTransform = pivot*trans * rot * antipivot;
-								kinect.cloudTransform = antipivot*trans * rot * pivot;
 
+								//kinect.cloudTransform = rot * pivot * trans * antipivot;
+								//kinect.cloudTransform = rot * antipivot * trans * pivot;
+
+								//kinect.cloudTransform = pivot * rot * antipivot * trans;
+								//kinect.cloudTransform = antipivot * rot * pivot * trans;
+
+								//kinect.cloudTransform = pivot * rot * trans * antipivot;
+								//kinect.cloudTransform = antipivot * rot * trans * pivot;
+
+								//kinect.cloudTransform = pivot * trans * rot * antipivot;
+								//kinect.cloudTransform = antipivot * trans * rot * pivot;
+
+								//kinect.cloudTransform = trans * pivot * rot * antipivot;
+								//kinect.cloudTransform = trans * antipivot * rot * pivot;
+
+								//kinect.cloudTransform = pivot * trans * antipivot * rot;
+								//kinect.cloudTransform = antipivot * trans * pivot * rot;
+
+								// no rotation
+								kinect.cloudTransform = trans;
 							}
 						}
 						else {
@@ -523,9 +603,12 @@ public:
 						printf("TrackedControllerRole_LeftHand Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
 						printf("TrackedControllerRole_LeftHand Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadL = true;
+						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
 					}
-					else if (!bIsLeftTouchpadPressed)
+					else if (!bIsLeftTouchpadPressed) {
 						waitForPadL = false;
+					}
+
 					if (bIsRightTouchpadPressed && calibrate && !waitForPadR) {
 
 						glm::vec3 ctrlpt = glm::vec3(openVR.getControllerPose(vr::TrackedControllerRole_RightHand)[3]);
@@ -536,9 +619,14 @@ public:
 						printf("Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
 						printf("Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadR = true;
+						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
 					}
-					else if (!bIsRightTouchpadPressed)
+					else if (!bIsRightTouchpadPressed) {
 						waitForPadR = false;
+					}
+
+
+					
 
 					if (bIsLeftGripPressed && calibrate && !waitForGripL && kinectCalibrator[i].vrPositions.size() > 0) {
 						kinectCalibrator[i].vrPositions.pop_back();
@@ -562,13 +650,6 @@ public:
 
 				
 
-				if (kinectCalibrator[i].kinectPositions.size() >= 4) {
-					
-					if (gotCalled) {
-						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
-						gotCalled = false;
-					}
-				}
 
 				for (int j = 0; j < num; j++) {
 					ofVec3f p;
