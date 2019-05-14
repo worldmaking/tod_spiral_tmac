@@ -337,7 +337,7 @@ public:
 		return result.rowRange(0, 3);
 	}
 	
-	void calculateTranslations(calibrationPoints &calibrationPoints, CloudDevice &device) {
+	void calculateTranslations(calibrationPoints &calibrationPoints, CloudDevice &device, int kinectNum) {
 
 		if (calibrationPoints.kinectPositions.size() < 4) return;
 
@@ -405,10 +405,10 @@ public:
 
 		//mat4.append(Json::Value((affdata[1], affdata[5], affdata[9], 0.)));
 		//mat4.append(Json::Value((affdata[2], affdata[6], affdata[10], 0.)));
-		event["kinect"]["0"] = vec0;
-		event["kinect"]["1"] = vec1;
-		event["kinect"]["2"] = vec2;
-		event["kinect"]["3"] = vec3;
+		event[kinectNum ? "kinect1" : "kinect0"]["0"] = vec0;
+		event[kinectNum ? "kinect1" : "kinect0"]["1"] = vec1;
+		event[kinectNum ? "kinect1" : "kinect0"]["2"] = vec2;
+		event[kinectNum ? "kinect1" : "kinect0"]["3"] = vec3;
 
 		std::cout << event << std::endl;
 
@@ -603,7 +603,7 @@ public:
 						printf("TrackedControllerRole_LeftHand Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
 						printf("TrackedControllerRole_LeftHand Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadL = true;
-						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
+						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i],i);
 					}
 					else if (!bIsLeftTouchpadPressed) {
 						waitForPadL = false;
@@ -619,7 +619,7 @@ public:
 						printf("Added VR position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].vrPositions.back().x, kinectCalibrator[i].vrPositions.back().y, kinectCalibrator[i].vrPositions.back().z, i);
 						printf("Added Kinect position: %f, %f, %f for kinect %d\n", kinectCalibrator[i].kinectPositions.back().x, kinectCalibrator[i].kinectPositions.back().y, kinectCalibrator[i].kinectPositions.back().z, i);
 						waitForPadR = true;
-						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i]);
+						calculateTranslations(kinectCalibrator[i], cloudDeviceManager.devices[i],i);
 					}
 					else if (!bIsRightTouchpadPressed) {
 						waitForPadR = false;
