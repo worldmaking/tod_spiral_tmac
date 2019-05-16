@@ -271,7 +271,7 @@ struct CloudDevice {
 			listener.release(frames);
 
 			if (fps.measure()) {
-				//printf("freenect %d fps %f\n", id, fps.fps);
+				printf("freenect %d fps %f\n", id, fps.fps);
 			}
 		
 		}

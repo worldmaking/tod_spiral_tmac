@@ -35,15 +35,18 @@ public:
 		ofDisableArbTex();
 		ofLoadImage(texture, "dot.png");
 
+		camera.setPosition(glm::vec3(0., 0., 3.));
 		camera.setTarget(glm::vec3(0.f));
 		camera.setNearClip(0.01);
 		camera.setFarClip(10.f);
-		camera.setDistance(camDist);
+		//camera.setDistance(camDist);
 		
 		// upload the data to the vbo
 		int total = (int)app->points.size();
 		vbo.setVertexData(&app->points[0], total, GL_STATIC_DRAW);
 		vbo.setNormalData(&app->sizes[0], total, GL_STATIC_DRAW);
+
+
 
 		//shader.load("shaders_gl3/noise.vert", "shaders_gl3/noise.frag");
 		shader.load("shaders_gl3/point");
@@ -51,6 +54,11 @@ public:
 
 	void update() {
 
+
+		// upload the data to the vbo
+		int total = (int)app->points.size();
+		vbo.setVertexData(&app->points[0], total, GL_STATIC_DRAW);
+		vbo.setNormalData(&app->sizes[0], total, GL_STATIC_DRAW);
 
 		std::stringstream strm;
 		strm << "fps: " << ofGetFrameRate();
@@ -63,16 +71,64 @@ public:
 		}
 	}
 
+	void draw_scene(glm::mat4 viewMatrix, glm::mat4 projMatrix) {
+		// TODO: is this in Simulation/shared?
+		double now_s = ofGetElapsedTimeMillis() * 0.001;
+		glm::mat4 viewProjectionMatrix = projMatrix * viewMatrix;
+
+
+
+		glDepthMask(GL_FALSE);
+		// this makes everything look glowy :)
+		ofEnableBlendMode(OF_BLENDMODE_ADD);
+
+		/*
+		shaderIso.begin();
+		shaderIso.setUniformMatrix4f("ciViewMatrix", viewMatrix);
+		shaderIso.setUniformMatrix4f("ciProjectionMatrix", projMatrix);
+		shaderIso.setUniform1f("uNow", now_s);
+		// TODO:
+		//shaderIso.setUniform1i("uGradient", 0);
+		// bind mGooTex
+		{ // wireframe
+			shaderIso.setUniform1f("uAlpha", 0.15f);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			vboIso.draw();
+		}
+		shaderIso.setUniform1f("uAlpha", 0.2f);
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		vboIso.draw();
+		shaderIso.end();
+*/
+		ofEnablePointSprites();
+
+		shader.begin();
+		shader.setUniform1f("size", 2.f);
+		shader.setUniformMatrix4f("modelViewProjectionMatrix", viewProjectionMatrix);
+
+		glPointSize(40.f);
+
+		texture.bind();
+		vbo.draw(GL_POINTS, 0, (int)app->points.size());
+		texture.unbind();
+
+		shader.end();
+
+		ofDisablePointSprites();
+		ofDisableBlendMode();
+		glDepthMask(GL_TRUE);
+
+	}
 
 	void draw() {
 		if (0) {
 			ofSetupScreen();
 			camera.begin();
-			app->draw_scene(camera.getModelViewMatrix(), camera.getProjectionMatrix());
+			draw_scene(camera.getModelViewMatrix(), camera.getProjectionMatrix());
 			camera.end();
 		}
 
-	if (1) {
+	if (0) {
 		ofSetupScreen();
 		//glDepthMask(GL_FALSE);
 

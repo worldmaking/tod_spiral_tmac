@@ -14,7 +14,7 @@
 #include "opencv2/features2d.hpp"
 #include "opencv2/core/affine.hpp"
 
-#include "json/json.h"
+//#include "json/json.h"
 #include <iostream>
 #include <fstream>
 
@@ -159,6 +159,7 @@ public:
 	CloudFrame Cloud;
 
 	bool isCapturing;
+	FILE * pFile;
 
 	bool rightDown = false;
 	bool leftDown = false;
@@ -264,7 +265,9 @@ public:
 		//int res = cv::estimateAffine3D(src, dst, aff, inliers, ransacThreshold, confidence);
 		////printf("result %d %d\n", res, inliers.size());
 		////std::cout << aff << std::endl;
-		
+
+
+
 	}
 
 	void addPoint(float x, float y, float z) {
@@ -347,24 +350,57 @@ public:
 			glm::vec3& kp = calibrationPoints.kinectPositions[i];
 			src.push_back(cv::Vec3d(vr.x, vr.y, vr.z));
 			dst.push_back(cv::Vec3d(kp.x, kp.y, kp.z));
-			//printf("result %s\n", glm::to_string(kp).data());
+			printf("vr %d %s\n", i, glm::to_string(vr).data());
+			printf("kp %d %s\n", i, glm::to_string(kp).data());
 		}
 
 		cv::Mat_<double> aff = FindRigidTransform(src, dst);
 		std::cout << aff << std::endl;
 
 		double * affdata = aff.ptr<double>(0);
-		//printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
-
-		device.cloudTransform = glm::inverse(glm::mat4(
+		printf("trans %f %f %f\n", affdata[3], affdata[7], affdata[11]);
+		glm::mat4 tmp = glm::mat4(
 			glm::vec4(affdata[0], affdata[4], affdata[8], 0.),
 			glm::vec4(affdata[1], affdata[5], affdata[9], 0.),
 			glm::vec4(affdata[2], affdata[6], affdata[10], 0.),
 			glm::vec4(affdata[3], affdata[7], affdata[11], 1.)
-		));
+		);
+		device.cloudTransform = glm::inverse(tmp);
 
+		printf("tmp %s\n", glm::to_string(tmp).data());
 		printf("cloudTransform %s\n", glm::to_string(device.cloudTransform).data());
 
+
+		pFile = fopen("kinectData.json", "w");
+		fprintf(pFile, "{\n\t");
+		for (int i = 0; i < 2; i++) {
+			CloudDevice &dev = cloudDeviceManager.devices[i];
+			fprintf(pFile, "%s: [\n", i ? "\"kinect1\"" : "\"kinect0\"");
+			for (int r = 0; r <= 3; r++) {
+				fprintf(pFile, "\n\n\t"); 
+				for (int c = 0; c <= 3; c++) {
+					if (r == 3 && c == 3) {
+
+						fprintf(pFile, "%f ", dev.cloudTransform[r][c]);
+					}
+					else {
+						fprintf(pFile, "%f, ", dev.cloudTransform[r][c]);
+					}
+					//printf("cloudTransform %s\n", device.cloudTransform[r][c]);
+				}
+				fprintf(pFile, "\n\t\t");
+			}
+			if (i == 1) {
+				fprintf(pFile, "\t]\n");
+			}
+			else {
+				fprintf(pFile, "\t],\n");
+			}
+		}
+		fprintf(pFile, "}");
+		fclose(pFile);
+
+		/*
 		Json::Value event;
 	
 		Json::Value vec0(Json::arrayValue);
@@ -372,7 +408,10 @@ public:
 		Json::Value vec2(Json::arrayValue);
 		Json::Value vec3(Json::arrayValue);
 
+
 		//std::string test = glm::to_string(device.cloudTransform).data();
+	
+
 
 		vec0.append(device.cloudTransform[0][0]);
 		vec0.append(device.cloudTransform[0][1]);
@@ -394,14 +433,7 @@ public:
 		vec3.append(device.cloudTransform[3][2]);
 		vec3.append(device.cloudTransform[3][3]);
 
-		/*vec.append(affdata[4]);
-		vec.append(affdata[8]);
-		vec.append(0.);
-		vec.append(affdata[1]);
-		vec.append(affdata[5]);
-		vec.append(affdata[9]);
-		vec.append(0.);
-		*/
+
 
 		//mat4.append(Json::Value((affdata[1], affdata[5], affdata[9], 0.)));
 		//mat4.append(Json::Value((affdata[2], affdata[6], affdata[10], 0.)));
@@ -409,7 +441,8 @@ public:
 		event[kinectNum ? "kinect1" : "kinect0"]["1"] = vec1;
 		event[kinectNum ? "kinect1" : "kinect0"]["2"] = vec2;
 		event[kinectNum ? "kinect1" : "kinect0"]["3"] = vec3;
-
+			*/
+		/*
 		std::cout << event << std::endl;
 
 		std::ofstream file_id;
@@ -421,7 +454,7 @@ public:
 		file_id << styledWriter.write(event);
 
 		file_id.close();
-
+		*/
 		/*
 		double ransacThreshold = 6;
 		double confidence = 0.995;
@@ -470,7 +503,6 @@ public:
 			delete (*i);
 		}
 		m_vecRenderModels.clear();
-
 		ofRemoveListener(openVR.ofxOpenVRControllerEvent, this, &ofApp::controllerEvent);
 		openVR.exit();
 	}
@@ -778,6 +810,7 @@ public:
 		// this makes everything look glowy :)
 		ofEnableBlendMode(OF_BLENDMODE_ADD);
 
+		/*
 		shaderIso.begin();
 		shaderIso.setUniformMatrix4f("ciViewMatrix", viewMatrix);
 		shaderIso.setUniformMatrix4f("ciProjectionMatrix", projMatrix);
@@ -794,7 +827,7 @@ public:
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		vboIso.draw();
 		shaderIso.end();
-
+*/
 		ofEnablePointSprites();
 
 		shader.begin();
